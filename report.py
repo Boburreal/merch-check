@@ -13,6 +13,7 @@ from export import fetch
 from analysis import prepare
 from merch import check_visit, pick_model, comment, DailyQuotaExceeded, STATS
 import store
+import locations
 from xlsx_report import build
 from telegram import send_text, send_file
 
@@ -96,9 +97,31 @@ def stored_merch(d1, d2):
 
 
 d1, d2, title = period()
-tp = prepare(fetch(1, d1, d2), 'ТП')
+# location monitoring: fresh snapshot first, so changes made today are already in the log
+try:
+    locations.snapshot()
+except Exception as e:
+    print(f"::warning::snapshot failed: {str(e)[:150]}")
+loc_log = store.load('loc_log')
+tp = prepare(fetch(1, d1, d2), 'ТП', loc_log)
 tp = tp[~tp['Лавозим'].str.contains('Медицин')]
-mp = prepare(fetch(4, d1, d2), 'МП', addr_is_suspicious=False)  # МП almost never fill the address
+mp = prepare(fetch(4, d1, d2), 'МП', loc_log)
+
+# location sheets for this period
+loc_changes = pd.DataFrame()
+if len(loc_log):
+    w = pd.to_datetime(loc_log['Аниқланди'], format='%d.%m.%Y %H:%M', errors='coerce').dt.date
+    loc_changes = loc_log[(w >= d1) & (w <= d2)]
+loc_static = pd.DataFrame()
+comp = store.load('companies_last')
+if len(comp):
+    for c in ('lat', 'lon'):
+        comp[c] = pd.to_numeric(comp[c], errors='coerce')
+    comp['id'] = comp['id'].astype(int)
+    st = locations.static_flags(comp)
+    visited = pd.concat([tp['obj'], mp['obj']]).str.lower().value_counts()
+    st['Визитлар (шу давр)'] = st['Аптека'].str.lower().map(visited).fillna(0).astype(int)
+    loc_static = st[st['Визитлар (шу давр)'] > 0].sort_values('Визитлар (шу давр)', ascending=False)
 print(f"::notice::{MODE} {d1}..{d2} tp={len(tp)} mp={len(mp)} tp_roles={tp['Лавозим'].value_counts().to_dict()} mp_roles={mp['Лавозим'].value_counts().to_dict() if len(mp) else {}}")
 
 if MODE in ("daily", "update"):
@@ -107,7 +130,7 @@ else:
     merch = stored_merch(d1, d2)
 
 path = f"/tmp/{title.split(' — ')[0].replace(' ', '_')}_{d1:%d.%m}-{d2:%d.%m.%Y}.xlsx"
-build(path, title, tp, mp, merch if len(merch) else None, ACC)
+build(path, title, tp, mp, merch if len(merch) else None, ACC, loc_changes, loc_static)
 
 # ---- Telegram summary ----
 tpm = tp[tp['Лавозим'].str.contains('Торг')]
@@ -126,6 +149,11 @@ if chk < len(tpm):
     msg.append(f"   ⏳ {len(tpm) - chk} та визит ҳали текширилмади (кейинги ишга туширишда текширилади)")
 msg += ["", f"<b>МП</b>: {len(mp)} визит, {mp['МП'].nunique() if len(mp) else 0} ходим",
         f"⚠️ Шубҳали визит: {int(mp['Шубҳали'].sum()) if len(mp) else 0} ({pct(mp['Шубҳали'].sum() if len(mp) else 0, len(mp))})"]
+if len(loc_changes):
+    kinds = loc_changes['Ўзгариш'].value_counts().to_dict()
+    msg += ["", "📍 Локация ўзгаришлари: " + ", ".join(f"{k} {v}" for k, v in kinds.items())]
+if len(loc_static):
+    msg += [f"📍 Координатаси шубҳали аптекаларга визит: {len(loc_static)} та аптека"]
 if len(tp):
     top = tp.groupby('ТП')['Шубҳали'].mean().sort_values(ascending=False).head(3)
     msg += ["", "Шубҳали улуши энг юқори ТП:"] + [f"• {k}: {v * 100:.0f}%" for k, v in top.items()]
