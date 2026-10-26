@@ -159,3 +159,23 @@ def check_visit(model: str, url1: str, url2: str) -> dict:
     out = decide(raw)
     out["raw"] = raw
     return out
+
+
+SURF = {"shelf": "витринада/полкада", "counter": "касса олдида", "unknown": "жойи аниқ эмас"}
+
+
+def comment(raw) -> str:
+    """Human-readable, per-photo explanation of what the AI saw."""
+    if not raw or not isinstance(raw, dict):
+        return ""
+    out = []
+    for i, p in enumerate(raw.get("photos", []), 1):
+        r = "✓" if p.get("rinomaks") else "✗"
+        f = "✓" if p.get("forsil") else "✗"
+        t = f"Фото {i}: Риномакс {r}, Форсил {f}"
+        if p.get("rinomaks") and p.get("forsil"):
+            t += ", " + SURF.get(p.get("surface"), "жойи аниқ эмас")
+            if not p.get("pharmacy_visible", True):
+                t += ", яқин план (аптека кўринмайди)"
+        out.append(t)
+    return ". ".join(out)

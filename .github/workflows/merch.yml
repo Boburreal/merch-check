@@ -1,8 +1,6 @@
 name: Merch sample (daily until done)
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "15 2 * * *"   # 07:15 Tashkent, after Gemini daily quota reset
 permissions:
   contents: write
 concurrency: merch
