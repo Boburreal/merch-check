@@ -16,14 +16,14 @@ Photos may be rotated 90 degrees, blurry, behind glass, or show the boxes small 
 For EACH visit photo answer:
 - rinomaks: true if Product A is visible anywhere
 - forsil: true if Product B is visible anywhere
-- boxes_area_pct: roughly what percent of the whole image the Product A + Product B boxes cover (0-100)
-- other_medicines: roughly how many OTHER medicine boxes/packages (not A or B) are clearly visible (0, 1-5, 6-20, 20+) -> give a number estimate
+- pharmacy_visible: true if around Product A and B you can see the pharmacy itself - shelves or cabinet with other medicines, the counter, the room.
+    false if the boxes are photographed so close that they fill most of the frame and the background is only a wall, a single surface or blur (typical "closeup" shot)
 - surface: what A and B physically stand on:
     "shelf"   = a shelf of a display cabinet / showcase / wall rack, usually with other medicine boxes beside, above or below them on shelves (also glass display window);
     "counter" = the flat top of the sales counter / cash desk where customers are served: wide flat surface in front, often a cash register, keyboard, card terminal, monitor, counter mat or calculator nearby;
     "unknown" = cannot tell (held in hand, against a wall, too close)
 Think carefully about surface: products standing on a wide, flat, mostly empty counter top are "counter" even if shelves are visible in the background.
-Return ONLY JSON: {"photos":[{"rinomaks":bool,"forsil":bool,"boxes_area_pct":int,"other_medicines":int,"surface":"..."},{...}]}"""
+Return ONLY JSON: {"photos":[{"rinomaks":bool,"forsil":bool,"pharmacy_visible":bool,"surface":"..."},{...}]}"""
 
 
 def _img_part(data: bytes):
@@ -97,12 +97,8 @@ def ask_gemini(model: str, photos: list[bytes]) -> dict:
     raise RuntimeError("Gemini: too many retries")
 
 
-CLOSEUP_AREA = 45      # boxes cover more than this % of the image -> closeup
-MIN_CONTEXT = 6        # fewer other medicines visible -> closeup
-
-
 def is_closeup(p: dict) -> bool:
-    return (p.get("boxes_area_pct") or 0) > CLOSEUP_AREA or (p.get("other_medicines") or 0) < MIN_CONTEXT
+    return not p.get("pharmacy_visible", True)
 
 
 def decide(result: dict) -> dict:
