@@ -4,6 +4,7 @@ on:
     inputs:
       from: {description: "YYYY-MM-DD", default: "2026-01-01"}
       to: {description: "YYYY-MM-DD", default: "2026-10-26"}
+      project: {description: "1=ТП, 4=Аптечные сети (МП)", default: "1"}
 permissions:
   contents: write
 jobs:
@@ -21,13 +22,14 @@ jobs:
           SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
           FROM: ${{ inputs.from }}
           TO: ${{ inputs.to }}
+          PROJECT: ${{ inputs.project }}
       - name: Encrypt (only the holder of the private key can read it)
         run: |
           tar czf /tmp/v.tgz -C /tmp visits
           openssl rand -out /tmp/k.bin 32
           mkdir -p drop
-          openssl enc -aes-256-cbc -pbkdf2 -salt -in /tmp/v.tgz -out drop/visits.tgz.enc -pass file:/tmp/k.bin
-          openssl pkeyutl -encrypt -pubin -inkey drop_pub.pem -in /tmp/k.bin -out drop/key.enc
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in /tmp/v.tgz -out drop/visits_p${{ inputs.project }}.tgz.enc -pass file:/tmp/k.bin
+          openssl pkeyutl -encrypt -pubin -inkey drop_pub.pem -in /tmp/k.bin -out drop/key_p${{ inputs.project }}.enc
           rm /tmp/k.bin /tmp/v.tgz
           ls -la drop
       - run: |
