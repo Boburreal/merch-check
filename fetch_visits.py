@@ -9,8 +9,7 @@ os.makedirs(OUT, exist_ok=True)
 
 s = login()
 PROJECT = int(os.environ.get("PROJECT", "1"))
-if PROJECT != 1:
-    switch_project(s, PROJECT)
+switch_project(s, PROJECT)
 
 
 def component():
