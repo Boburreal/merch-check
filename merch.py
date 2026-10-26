@@ -16,11 +16,14 @@ Photos may be rotated 90 degrees, blurry, behind glass, or show the boxes small 
 For EACH visit photo answer:
 - rinomaks: true if Product A is visible anywhere
 - forsil: true if Product B is visible anywhere
-- place: "vitrina" if the products stand on a display shelf / showcase / glass cabinet among other medicines;
-         "kassa" if the products stand on the counter / cash desk (near register, card terminal, keyboard, counter mat, sales window);
-         "unknown" if you cannot tell
-- closeup: true if the photo is taken so close that the pharmacy surroundings (shelves, counter, room) are NOT visible and the boxes fill the frame (e.g. held against a wall)
-Return ONLY JSON: {"photos":[{"rinomaks":bool,"forsil":bool,"place":"...","closeup":bool},{...}]}"""
+- boxes_area_pct: roughly what percent of the whole image the Product A + Product B boxes cover (0-100)
+- other_medicines: roughly how many OTHER medicine boxes/packages (not A or B) are clearly visible (0, 1-5, 6-20, 20+) -> give a number estimate
+- surface: what A and B physically stand on:
+    "shelf"   = a shelf of a display cabinet / showcase / wall rack, usually with other medicine boxes beside, above or below them on shelves (also glass display window);
+    "counter" = the flat top of the sales counter / cash desk where customers are served: wide flat surface in front, often a cash register, keyboard, card terminal, monitor, counter mat or calculator nearby;
+    "unknown" = cannot tell (held in hand, against a wall, too close)
+Think carefully about surface: products standing on a wide, flat, mostly empty counter top are "counter" even if shelves are visible in the background.
+Return ONLY JSON: {"photos":[{"rinomaks":bool,"forsil":bool,"boxes_area_pct":int,"other_medicines":int,"surface":"..."},{...}]}"""
 
 
 def _img_part(data: bytes):
@@ -94,6 +97,14 @@ def ask_gemini(model: str, photos: list[bytes]) -> dict:
     raise RuntimeError("Gemini: too many retries")
 
 
+CLOSEUP_AREA = 45      # boxes cover more than this % of the image -> closeup
+MIN_CONTEXT = 6        # fewer other medicines visible -> closeup
+
+
+def is_closeup(p: dict) -> bool:
+    return (p.get("boxes_area_pct") or 0) > CLOSEUP_AREA or (p.get("other_medicines") or 0) < MIN_CONTEXT
+
+
 def decide(result: dict) -> dict:
     """Apply Bobur's rules: both products in ONE photo; closeups are 'suspicious'."""
     vit = kas = 0
@@ -101,12 +112,12 @@ def decide(result: dict) -> dict:
     for p in result.get("photos", []):
         if not (p.get("rinomaks") and p.get("forsil")):
             continue
-        if p.get("closeup"):
+        if is_closeup(p) or p.get("surface") == "unknown":
             both_closeup = True
             continue
-        if p.get("place") == "vitrina":
+        if p.get("surface") == "shelf":
             vit = 1
-        elif p.get("place") == "kassa":
+        elif p.get("surface") == "counter":
             kas = 1
     if vit or kas:
         cat = "merch"
