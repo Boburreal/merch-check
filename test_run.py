@@ -24,6 +24,8 @@ for i, r in enumerate(rows, 1):
     if match and r["expected"] == "merch":
         match = str(res["vitrina"]) == r["vitrina"] and str(res["kassa"]) == r["kassa"]
     ok += match
+    if not match:
+        print(f"::notice::MISS {r['id']} exp={r['expected']}/v{r['vitrina']}/k{r['kassa']} got={res['category']}/v{res['vitrina']}/k{res['kassa']} raw=" + json.dumps(res.get('raw'))[:400])
     ws.append([r["id"], NAMES[r["expected"]], NAMES[res["category"]], r["vitrina"], res["vitrina"],
                r["kassa"], res["kassa"], "✅" if match else "❌", r["photo1"], r["photo2"],
                json.dumps(res.get("raw"), ensure_ascii=False)[:500]])
