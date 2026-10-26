@@ -1,26 +1,21 @@
-"""Find how project-select switches project, and the MP visits export page (no data printed)."""
+"""Structure of company list page (no data values printed)."""
 import re, json, html
-from sales import login, BASE
+from sales import login, switch_project, BASE
 
 s = login()
-r = s.get(BASE + "/visits/reports", timeout=60)
-for sn in re.findall(r'wire:snapshot="([^"]+)"', r.text):
-    j = json.loads(html.unescape(sn))
-    if j.get("memo", {}).get("name") == "project-select":
-        print(f"::notice::project-select data={json.dumps(j['data'])[:300]}")
-# options / clicks inside the project select block
-i = r.text.find('project-select')
-blk = r.text[max(0, i - 200): i + 4000]
-opts = re.findall(r'<option[^>]*value="([^"]*)"[^>]*>\s*([^<]+)<', blk)
-clicks = re.findall(r'wire:(?:click|change|model[\w.]*)="([^"]+)"', blk)
-print(f"::notice::options={opts[:15]} wire={clicks[:10]}"[:3000])
-r2 = s.get(BASE + "/lists/visits", timeout=60)
-names = []
-for sn in re.findall(r'wire:snapshot="([^"]+)"', r2.text):
-    try:
-        j = json.loads(html.unescape(sn)); d = j.get("data", {})
-        names.append(f"{j['memo']['name']} keys={list(d.keys())[:12] if isinstance(d, dict) else d}")
-    except Exception as e:
-        names.append("ERR")
-ex = sorted(set(re.findall(r'wire:click(?:\.[a-z]+)?="([^"]+)"', r2.text)))[:15]
-print(f"::notice::/lists/visits comps={names} clicks={ex}"[:3500])
+switch_project(s, 1)
+for path in ["/lists/companies", "/map"]:
+    r = s.get(BASE + path, timeout=60)
+    comps = []
+    for sn in re.findall(r'wire:snapshot="([^"]+)"', r.text):
+        try:
+            j = json.loads(html.unescape(sn)); d = j.get("data", {})
+            keys = list(d.keys())[:20] if isinstance(d, dict) else []
+            comps.append(f"{j['memo']['name']} keys={keys}")
+        except Exception:
+            comps.append("ERR")
+    clicks = sorted(set(re.findall(r'wire:click(?:\.[a-z]+)?="([^"]+)"', r.text)))[:20]
+    ths = re.findall(r'<th[^>]*>\s*([^<]{2,40})<', r.text)[:25]
+    hrefs = sorted(set(re.findall(r'href="([^"]*(?:export|excel|csv|download|history|log)[^"]*)"', r.text, re.I)))[:10]
+    apis = sorted(set(re.findall(r'["\'](/api/[^"\']+)["\']', r.text)))[:10]
+    print(f"::notice::{path} comps={comps} clicks={clicks} th={ths} hrefs={hrefs} apis={apis}"[:3800])
