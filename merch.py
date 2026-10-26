@@ -1,6 +1,19 @@
 """Merch photo checker: Gemini (free tier) decides Витрина / Касса / Шубҳали per visit."""
-import base64, json, os, time
+import base64, io, json, os, time
 import requests
+from PIL import Image
+
+STATS = {"requests": 0, "r429": 0, "wait_s": 0.0}
+
+
+def shrink(data: bytes, side: int = 1024) -> bytes:
+    try:
+        im = Image.open(io.BytesIO(data)).convert("RGB")
+        im.thumbnail((side, side))
+        b = io.BytesIO(); im.save(b, "JPEG", quality=85)
+        return b.getvalue()
+    except Exception:
+        return data
 
 GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 API = "https://generativelanguage.googleapis.com/v1beta"
@@ -67,7 +80,7 @@ def download(url: str) -> bytes | None:
         try:
             r = requests.get(url, timeout=60)
             if r.ok and r.content:
-                return r.content
+                return shrink(r.content)
         except requests.RequestException:
             pass
         time.sleep(3)
@@ -86,11 +99,17 @@ def ask_gemini(model: str, photos: list[bytes]) -> dict:
             "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}}
     wait = 20
     for attempt in range(6):
+        STATS["requests"] += 1
         r = requests.post(f"{API}/models/{model}:generateContent",
                           headers={"x-goog-api-key": GEMINI_KEY}, json=body, timeout=180)
         if r.status_code == 429 and ("PerDay" in r.text or "per day" in r.text.lower()):
             raise DailyQuotaExceeded(r.text[:200])
+        if r.status_code == 429:
+            STATS["r429"] += 1
+            if STATS["r429"] <= 2:
+                print("::warning::429 " + r.text[:300].replace(chr(10), " "))
         if r.status_code in (429, 500, 503):
+            STATS["wait_s"] += wait
             if attempt == 5:
                 if r.status_code == 429:
                     raise DailyQuotaExceeded(r.text[:200])
