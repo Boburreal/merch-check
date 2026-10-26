@@ -47,9 +47,12 @@ def match(name) -> str | None:
             return None
         return 'Риноксил 0,1% 10мл спрей'
     if 'форсил' in n or 'forsil' in n:
-        if '400' in n or 'light' in n or 'лайт' in n:
-            return None                 # Форсил Light 400мг is not counted
-        return 'Форсил со вкусом апельсина 3г №30'   # powder 3г №30 + Форсил экспресс 200мг (as in Bobur's file)
+        # only the orange powder 3г №30 counts; Форсил экспресс 200мг and Форсил Light 400мг capsules do not
+        if 'капс' in n or '400' in n or '200' in n or 'light' in n or 'экспресс' in n:
+            return None
+        if 'апел' in n or 'апил' in n or 'апельс' in n or 'пор' in n or '3г' in n or '3 г' in n:
+            return 'Форсил со вкусом апельсина 3г №30'
+        return None
     if 'мирамистин' in n:
         return 'Мирамистин 50мл р-р' if '50' in n else None
     if 'тивомакс' in n:
