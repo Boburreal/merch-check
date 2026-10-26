@@ -98,7 +98,7 @@ def stored_merch(d1, d2):
 d1, d2, title = period()
 tp = prepare(fetch(1, d1, d2), 'ТП')
 tp = tp[~tp['Лавозим'].str.contains('Медицин')]
-mp = prepare(fetch(4, d1, d2), 'МП')
+mp = prepare(fetch(4, d1, d2), 'МП', addr_is_suspicious=False)  # МП almost never fill the address
 print(f"::notice::{MODE} {d1}..{d2} tp={len(tp)} mp={len(mp)} tp_roles={tp['Лавозим'].value_counts().to_dict()} mp_roles={mp['Лавозим'].value_counts().to_dict() if len(mp) else {}}")
 
 if MODE in ("daily", "update"):
