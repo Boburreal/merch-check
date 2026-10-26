@@ -1,0 +1,35 @@
+name: Fetch visits (encrypted)
+on:
+  workflow_dispatch:
+    inputs:
+      from: {description: "YYYY-MM-DD", default: "2026-01-01"}
+      to: {description: "YYYY-MM-DD", default: "2026-10-26"}
+permissions:
+  contents: write
+jobs:
+  f:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install requests
+      - run: python fetch_visits.py
+        env:
+          SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
+          SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
+          FROM: ${{ inputs.from }}
+          TO: ${{ inputs.to }}
+      - name: Encrypt (only the holder of the private key can read it)
+        run: |
+          tar czf /tmp/v.tgz -C /tmp visits
+          openssl rand -out /tmp/k.bin 32
+          mkdir -p drop
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in /tmp/v.tgz -out drop/visits.tgz.enc -pass file:/tmp/k.bin
+          openssl pkeyutl -encrypt -pubin -inkey drop_pub.pem -in /tmp/k.bin -out drop/key.enc
+          rm /tmp/k.bin /tmp/v.tgz
+          ls -la drop
+      - run: |
+          git config user.name "merch-bot"; git config user.email "bot@users.noreply.github.com"
+          git add drop && git commit -m "encrypted visits drop" && git push
