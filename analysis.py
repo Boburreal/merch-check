@@ -8,7 +8,7 @@ FLAGS = {'gap': f'Тез ёпилган (≤{GAP_MIN} дақ)', 'addr': 'Ман�
          'hours': 'Иш вақтидан ташқари'}
 
 
-def prepare(raw: pd.DataFrame, who: str = 'ТП') -> pd.DataFrame:
+def prepare(raw: pd.DataFrame, who: str = 'ТП', addr_is_suspicious: bool = True) -> pd.DataFrame:
     t = raw.copy()
     role = t['Фарм. пред'].str.extract(r'\(([^()]*)\)\s*$')[0]
     t['Лавозим'] = role.fillna('—').str.replace(' РУС', '').str.replace(' Рус', '')
@@ -32,8 +32,9 @@ def prepare(raw: pd.DataFrame, who: str = 'ТП') -> pd.DataFrame:
         note[i].append(f"Олдинги визит ({prev_dt[i]:%H:%M}, «{prev_obj[i][:40]}») дан {int(gap[i])} дақиқа кейин ёпилган")
     m = t['Адрес'].isna() | t['Адрес'].fillna('').str.strip().isin(['', '-'])
     f['addr'] = m
-    for i in t.index[m]:
-        note[i].append("Манзил кўрсатилмаган")
+    if addr_is_suspicious:
+        for i in t.index[m]:
+            note[i].append("Манзил кўрсатилмаган")
     p1 = t['Фото 1'].fillna('').str.startswith('http')
     p2 = t['Фото 2'].fillna('').str.startswith('http')
     m = ~(p1 & p2)
