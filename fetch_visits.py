@@ -1,6 +1,6 @@
 """Download 'Общий отчёт' (visits with photo links) month by month via the Livewire export."""
 import base64, html, json, os, re, sys, datetime as dt
-from sales import login, BASE
+from sales import login, switch_project, BASE
 
 FROM = os.environ.get("FROM", "2026-01-01")
 TO = os.environ.get("TO", dt.date.today().isoformat())
@@ -8,6 +8,9 @@ OUT = os.environ.get("OUT", "/tmp/visits")
 os.makedirs(OUT, exist_ok=True)
 
 s = login()
+PROJECT = int(os.environ.get("PROJECT", "1"))
+if PROJECT != 1:
+    switch_project(s, PROJECT)
 
 
 def component():
@@ -51,6 +54,8 @@ while cur <= end:
     lines = data.count(b"\n")
     total += lines
     open(f"{OUT}/visits_{cur:%Y-%m}.csv", "wb").write(data)
+    head = data[:400].decode("utf-8", "ignore").splitlines()
+    if head: print(f"::notice::header={head[0][:300]}")
     print(f"::notice::{cur:%Y-%m}: {lines} rows, {len(data)//1024} KB")
     cur = nxt
 print(f"::notice::TOTAL rows {total}")
