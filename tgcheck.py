@@ -9,3 +9,6 @@ r = wh.get("result", {})
 print(f"::notice::webhook url_set={bool(r.get('url'))} host={(r.get('url') or '').split('/')[2] if r.get('url') else ''} pending={r.get('pending_update_count')}")
 print(f"::notice::updates ok={up.get('ok')} n={len(up.get('result',[]))} err={up.get('description','')}")
 print(f"::notice::token_len={len(T)} raw_len={len(os.environ['TG_BOT_TOKEN'])}")
+from telegram import send_text
+send_text("✅ Салом, Бобур! Бот уланди.\nБундан кейин визит ва мерч ҳисоботлари шу ерга келади.")
+print("::notice::sent=ok")
