@@ -10,6 +10,7 @@ from openpyxl.utils import get_column_letter
 import roster as R
 from analysis import FLAGS
 
+AI_START = pd.Timestamp('2026-10-25')   # first day whose visits were checked by AI
 MON = {1: 'Январь', 2: 'Февраль', 3: 'Март', 4: 'Апрель', 5: 'Май', 6: 'Июнь', 7: 'Июль', 8: 'Август',
        9: 'Сентябрь', 10: 'Октябрь', 11: 'Ноябрь', 12: 'Декабрь'}
 HDR = PatternFill('solid', fgColor='1F7A3A'); HF = Font(bold=True, color='FFFFFF')
@@ -173,10 +174,14 @@ def build(path, month_title, tp, merch, seed, people, loc_changes):
     v = tpx.sort_values(['day', 'ТП', 'dt'])
     for i, x in enumerate(v.to_dict('records'), 2):
         cat = x['cat'] if isinstance(x['cat'], str) else None
+        if cat == 'error':
+            cat = None                      # failed check is retried on the next run - shown as not checked
         if cat:
             mtxt = CAT.get(cat, 'Текширилмади')
+        elif x['day'] < AI_START:
+            mtxt = 'қўлда (ИИ дан олдин)'   # merch numbers for these days come from Bobur's own file
         else:
-            mtxt = 'қўлда (ИИ дан олдин)' if x['day'] < pd.Timestamp('2026-10-26') else 'Текширилмади'
+            mtxt = 'Ҳали текширилмади (кейинги ишга туширишда)'
         vals = [x['id'], x['Дата'], x['Время завершения визита'], x['ТП'], x['Иш ҳудуди'], x['Контр-агент/Врач'], mtxt,
                 ('Да' if x['v'] else 'Нет') if cat else '', ('Да' if x['k'] else 'Нет') if cat else '',
                 mc.get(x['id'], ''), x['Изоҳ'],
