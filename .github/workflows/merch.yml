@@ -1,0 +1,42 @@
+name: Merch sample (daily until done)
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 2 * * *"   # 07:15 Tashkent, after Gemini daily quota reset
+permissions:
+  contents: write
+concurrency: merch
+jobs:
+  m:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install requests
+      - run: python fetch_visits.py
+        env:
+          SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
+          SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
+          FROM: "2026-01-01"
+          TO: "2026-10-26"
+      - run: python merch_batch.py
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - name: Encrypt results
+        if: always()
+        run: |
+          [ -f /tmp/merch_out.csv ] || exit 0
+          TS=$(date -u +%Y%m%d_%H%M)
+          openssl rand -out /tmp/k.bin 32
+          gzip -c /tmp/merch_out.csv > /tmp/m.gz
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in /tmp/m.gz -out drop/merch_$TS.enc -pass file:/tmp/k.bin
+          openssl pkeyutl -encrypt -pubin -inkey drop_pub.pem -in /tmp/k.bin -out drop/merch_$TS.key
+          rm /tmp/k.bin /tmp/m.gz
+      - name: Commit
+        if: always()
+        run: |
+          git config user.name "merch-bot"; git config user.email "bot@users.noreply.github.com"
+          git pull -q --rebase || true
+          git add drop && git commit -m "merch progress" && git push || true

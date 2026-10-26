@@ -74,6 +74,10 @@ def download(url: str) -> bytes | None:
     return None
 
 
+class DailyQuotaExceeded(Exception):
+    pass
+
+
 def ask_gemini(model: str, photos: list[bytes]) -> dict:
     parts = [{"text": PROMPT}] + ref_parts()
     for i, p in enumerate(photos, 1):
@@ -84,8 +88,12 @@ def ask_gemini(model: str, photos: list[bytes]) -> dict:
     for attempt in range(6):
         r = requests.post(f"{API}/models/{model}:generateContent",
                           headers={"x-goog-api-key": GEMINI_KEY}, json=body, timeout=180)
+        if r.status_code == 429 and ("PerDay" in r.text or "per day" in r.text.lower()):
+            raise DailyQuotaExceeded(r.text[:200])
         if r.status_code in (429, 500, 503):
             if attempt == 5:
+                if r.status_code == 429:
+                    raise DailyQuotaExceeded(r.text[:200])
                 r.raise_for_status()
             time.sleep(wait)
             wait = min(wait * 2, 120)
