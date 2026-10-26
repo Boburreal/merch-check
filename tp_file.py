@@ -178,7 +178,8 @@ def build(path, month_title, tp, merch, seed, people, loc_changes):
         else:
             mtxt = 'қўлда (ИИ дан олдин)' if x['day'] < pd.Timestamp('2026-10-26') else 'Текширилмади'
         vals = [x['id'], x['Дата'], x['Время завершения визита'], x['ТП'], x['Иш ҳудуди'], x['Контр-агент/Врач'], mtxt,
-                'Да' if x['v'] else 'Нет', 'Да' if x['k'] else 'Нет', mc.get(x['id'], ''), x['Изоҳ'],
+                ('Да' if x['v'] else 'Нет') if cat else '', ('Да' if x['k'] else 'Нет') if cat else '',
+                mc.get(x['id'], ''), x['Изоҳ'],
                 x['Фото 1'], x['Фото 2']]
         for j, val in enumerate(vals, 1):
             c = ws.cell(i, j, val)
