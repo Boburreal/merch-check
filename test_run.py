@@ -9,6 +9,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 rows = list(csv.DictReader(open(os.path.join(HERE, "data", "test_sample.csv"), encoding="utf-8")))
 model = pick_model()
 print("model:", model, "visits:", len(rows))
+print(f"::notice::model={model}")
 
 NAMES = {"merch": "Мерч бор", "none": "—", "suspicious": "Шубҳали", "no_photo": "Фото йўқ", "error": "Хато"}
 wb = Workbook(); ws = wb.active
@@ -31,6 +32,16 @@ for i, r in enumerate(rows, 1):
 
 path = "/tmp/gemini_test.xlsx"
 wb.save(path)
-print("agreement:", ok, "/", len(rows))
-send_text(f"🧪 <b>Gemini синов</b>\nМодель: {model}\nМослик: <b>{ok}/{len(rows)}</b> визит")
-send_file(path, "Ҳар бир визит бўйича солиштирув")
+errs = sum(1 for r in ws.iter_rows(min_row=2, values_only=True) if r[2] == "Хато")
+print(f"::notice::agreement={ok}/{len(rows)} errors={errs}")
+for r in ws.iter_rows(min_row=2, values_only=True):
+    if r[2] == "Хато":
+        print("::warning::" + str(r[10])[:180].replace(chr(10), " "))
+        break
+try:
+    send_text(f"🧪 <b>Gemini синов</b>\nМодель: {model}\nМослик: <b>{ok}/{len(rows)}</b> визит")
+    send_file(path, "Ҳар бир визит бўйича солиштирув")
+    print("::notice::telegram=sent")
+except BaseException as e:
+    print("::error::telegram failed: " + str(e)[:200].replace(chr(10), " "))
+    raise
