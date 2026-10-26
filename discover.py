@@ -1,15 +1,14 @@
-"""Find data endpoints of /lists/companies (table) and /map (tracking). Prints code snippets only."""
+"""Print small inline scripts (page logic, not vendor libs) of /lists/companies and /map."""
 import re
 from sales import login, switch_project, BASE
 
 s = login()
 switch_project(s, 1)
-r = s.get(BASE + "/lists/companies", timeout=60)
-snips = [r.text[max(0, m.start() - 120): m.start() + 220].replace("\n", " ") for m in re.finditer(r'ajax|DataTable\(|serverSide|fetch\(|axios', r.text)][:4]
-print(f"::notice::companies snippets={snips}"[:3800])
-pag = re.findall(r'href="([^"]*page=\d+[^"]*)"', r.text)[:3]
-rows = len(re.findall(r'<tr', r.text))
-print(f"::notice::companies rows_in_html={rows} pag={pag}")
-r = s.get(BASE + "/map", timeout=60)
-snips = [r.text[max(0, m.start() - 150): m.start() + 250].replace("\n", " ") for m in re.finditer(r'tracking|polyline|L\.marker|ymaps|lat', r.text)][:5]
-print(f"::notice::map snippets={snips}"[:3800])
+for path in ["/lists/companies", "/map"]:
+    r = s.get(BASE + path, timeout=60)
+    scripts = re.findall(r'<script(?![^>]*src)[^>]*>(.*?)</script>', r.text, re.S)
+    small = [re.sub(r'\s+', ' ', x)[:700] for x in scripts if 30 < len(x) < 20000 and 'livewire' not in x[:200].lower()]
+    srcs = re.findall(r'<script[^>]*src="([^"]+)"', r.text)
+    print(f"::notice::{path} n_inline={len(scripts)} srcs={srcs[-6:]}")
+    for i, x in enumerate(small[:4]):
+        print(f"::notice::{path} S{i}: {x}")
