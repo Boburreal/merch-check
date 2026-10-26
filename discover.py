@@ -1,18 +1,17 @@
-"""Print the structure of the Sales report pages (links, forms, export buttons) - no data."""
-import re
-from urllib.parse import urljoin
+"""Print structure of the field-activity report page (component names, filters, export calls) - no data."""
+import re, json, html
 from sales import login, BASE
 
 s = login()
-home = s.get(BASE + "/", timeout=60)
-print(f"::notice::login ok, landed on {home.url}")
-links = sorted(set(re.findall(r'href="([^"#]+)"', home.text)))
-links = [l for l in links if "sales.asklepiygroup.uz" in l or l.startswith("/")]
-print("::notice::LINKS " + " | ".join(l.replace(BASE, "") for l in links)[:3500])
-cand = [l for l in links if re.search(r"report|otchet|visit|statist", l, re.I)]
-for l in cand[:6]:
-    r = s.get(urljoin(BASE, l), timeout=60)
-    forms = re.findall(r"<form[^>]*>", r.text)
-    ex = re.findall(r'(?:href|wire:click|onclick|action)="([^"]*(?:xport|xcel|csv|download)[^"]*)"', r.text, re.I)
-    names = sorted(set(re.findall(r'(?:name|wire:model(?:\.live)?(?:\.defer)?)="([^"]+)"', r.text)))
-    print(f"::notice::PAGE {l.replace(BASE,'')} forms={forms[:3]} export={ex[:6]} fields={names[:25]}"[:3800])
+for path in ["/reports/daily-field-activity", "/visits/reports"]:
+    r = s.get(BASE + path, timeout=60)
+    snaps = re.findall(r'wire:snapshot="([^"]+)"', r.text)
+    comps = []
+    for sn in snaps:
+        j = json.loads(html.unescape(sn))
+        data = j.get("data", {})
+        comps.append(f"{j['memo']['name']} keys={list(data.keys())[:15]} filter={json.dumps(data.get('filter'))[:300]}")
+    clicks = sorted(set(re.findall(r'wire:click(?:\.[a-z]+)?="([^"]+)"', r.text)))[:20]
+    tabs = re.findall(r'<a[^>]*(?:tab|nav-link)[^>]*>\s*([^<]{3,60})<', r.text)[:10]
+    upd = re.findall(r'data-update-uri="([^"]+)"', r.text)
+    print(f"::notice::PAGE {path} comps={comps} clicks={clicks} tabs={tabs} upd={upd}"[:4000])
