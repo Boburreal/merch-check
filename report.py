@@ -18,6 +18,7 @@ from xlsx_report import build
 import roster as R
 from checks import enrich, remember
 import tp_file, mp_file
+from ru import translate_workbook
 from telegram import send_text, send_file
 
 TZ = ZoneInfo("Asia/Tashkent")
@@ -185,9 +186,9 @@ else:
         note = "Фақат шубҳали ҳолати бўлган ходимлар. "
     else:
         tp_r, mp_r, note = tp, mp, ""
-    p1 = f"/tmp/ТП таҳлил {d1:%d.%m}-{d2:%d.%m.%Y}.xlsx"
+    p1 = f"/tmp/ТП анализ {d1:%d.%m}-{d2:%d.%m.%Y}.xlsx"
     build(p1, f"ТП — {title}", tp_r, None, merch if len(merch) else None, note + ACC, loc_changes, None)
-    p2 = f"/tmp/МП таҳлил {d1:%d.%m}-{d2:%d.%m.%Y}.xlsx"
+    p2 = f"/tmp/МП анализ {d1:%d.%m}-{d2:%d.%m.%Y}.xlsx"
     build(p2, f"МП — {title}", mp_r.iloc[0:0], mp_r, None, note, loc_changes, None)
     files = [(p1, "ТП: " + title), (p2, "МП: " + title)]
     chk = tp[['id']].merge(merch, on='id', how='inner')['category'].isin(['merch', 'none', 'suspicious']).sum() if len(merch) else 0
@@ -201,5 +202,6 @@ else:
 
 send_text("\n".join(msg))
 for p, cap in files:
+    translate_workbook(p)          # files are delivered in Russian
     send_file(p, cap)
 print("::notice::telegram=sent")
