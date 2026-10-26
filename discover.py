@@ -1,22 +1,26 @@
-"""Print structure of the field-activity report page (component names, filters, export calls) - no data."""
+"""Find how project-select switches project, and the MP visits export page (no data printed)."""
 import re, json, html
 from sales import login, BASE
 
 s = login()
-print(f"::notice::start")
-for path in ["/reports/daily-field-activity", "/visits/reports"]:
-    r = s.get(BASE + path, timeout=60)
-    print(f"::notice::{path} status={r.status_code} url={r.url} len={len(r.text)} snaps={r.text.count('wire:snapshot')}")
-    snaps = re.findall(r'wire:snapshot="([^"]+)"', r.text)
-    comps = []
-    for sn in snaps:
-        try:
-            j = json.loads(html.unescape(sn))
-            data = j.get("data", {})
-            comps.append(f"{j.get('memo',{}).get('name')} keys={list(data.keys())[:15]} filter={json.dumps(data.get('filter'))[:300]}")
-        except Exception as e:
-            comps.append("ERR " + str(e)[:80] + " " + sn[:150])
-    clicks = sorted(set(re.findall(r'wire:click(?:\.[a-z]+)?="([^"]+)"', r.text)))[:20]
-    tabs = re.findall(r'<a[^>]*(?:tab|nav-link)[^>]*>\s*([^<]{3,60})<', r.text)[:10]
-    upd = re.findall(r'data-update-uri="([^"]+)"', r.text)
-    print(f"::notice::PAGE {path} comps={comps} clicks={clicks} tabs={tabs} upd={upd}"[:4000])
+r = s.get(BASE + "/visits/reports", timeout=60)
+for sn in re.findall(r'wire:snapshot="([^"]+)"', r.text):
+    j = json.loads(html.unescape(sn))
+    if j.get("memo", {}).get("name") == "project-select":
+        print(f"::notice::project-select data={json.dumps(j['data'])[:300]}")
+# options / clicks inside the project select block
+i = r.text.find('project-select')
+blk = r.text[max(0, i - 200): i + 4000]
+opts = re.findall(r'<option[^>]*value="([^"]*)"[^>]*>\s*([^<]+)<', blk)
+clicks = re.findall(r'wire:(?:click|change|model[\w.]*)="([^"]+)"', blk)
+print(f"::notice::options={opts[:15]} wire={clicks[:10]}"[:3000])
+r2 = s.get(BASE + "/lists/visits", timeout=60)
+names = []
+for sn in re.findall(r'wire:snapshot="([^"]+)"', r2.text):
+    try:
+        j = json.loads(html.unescape(sn)); d = j.get("data", {})
+        names.append(f"{j['memo']['name']} keys={list(d.keys())[:12] if isinstance(d, dict) else d}")
+    except Exception as e:
+        names.append("ERR")
+ex = sorted(set(re.findall(r'wire:click(?:\.[a-z]+)?="([^"]+)"', r2.text)))[:15]
+print(f"::notice::/lists/visits comps={names} clicks={ex}"[:3500])
