@@ -2,7 +2,7 @@
 Logs are public (public repo) - only aggregate numbers are printed."""
 import csv, json, os, time
 from openpyxl import Workbook
-from merch import check_visit, pick_model
+from merch import check_visit, pick_model, STATS
 from telegram import send_text, send_file
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -15,6 +15,7 @@ NAMES = {"merch": "Мерч бор", "none": "—", "suspicious": "Шубҳал�
 wb = Workbook(); ws = wb.active
 ws.append(["#", "Кутилган", "Gemini", "Витрина (кут.)", "Витрина (Gemini)", "Касса (кут.)", "Касса (Gemini)", "Мос", "Фото 1", "Фото 2", "raw"])
 ok = 0
+T0 = time.time()
 misses = []
 for i, r in enumerate(rows, 1):
     try:
@@ -31,12 +32,13 @@ for i, r in enumerate(rows, 1):
                r["kassa"], res["kassa"], "✅" if match else "❌", r["photo1"], r["photo2"],
                json.dumps(res.get("raw"), ensure_ascii=False)[:500]])
     print(f"{i}/{len(rows)}")
-    time.sleep(5)
+    time.sleep(2)
 
 path = "/tmp/gemini_test.xlsx"
 wb.save(path)
 errs = sum(1 for r in ws.iter_rows(min_row=2, values_only=True) if r[2] == "Хато")
 print("::notice::MISSES " + " | ".join(misses))
+print(f"::notice::elapsed={int(time.time()-T0)}s stats={STATS}")
 print(f"::notice::agreement={ok}/{len(rows)} errors={errs}")
 for r in ws.iter_rows(min_row=2, values_only=True):
     if r[2] == "Хато":

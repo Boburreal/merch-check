@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install requests openpyxl
+      - run: pip install requests openpyxl pillow
       - run: python test_run.py
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
