@@ -34,8 +34,15 @@ def _export(s, d1: str, d2: str) -> bytes:
 
 def fetch(project: int, d1: dt.date, d2: dt.date) -> pd.DataFrame:
     s = login()
-    if project != 1:
-        switch_project(s, project)
+    switch_project(s, project)          # project choice is stored on the account - always set it explicitly
+    try:
+        return _fetch(s, d1, d2)
+    finally:
+        if project != 1:
+            switch_project(s, 1)        # leave the account on "Торговые представители" as the user had it
+
+
+def _fetch(s, d1, d2):
     parts, cur = [], d1
     while cur <= d2:
         nxt = (cur.replace(day=1) + dt.timedelta(days=32)).replace(day=1)
