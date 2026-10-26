@@ -1,13 +1,14 @@
 name: Hisobot (Telegram)
 on:
   schedule:
-    - cron: "30 12 * * *"    # 17:30 Tashkent - kunlik
+    - cron: "30 12 * * *"    # 17:30 Tashkent - kunlik (oy boshidan bugungacha fayllar)
     - cron: "30 3 * * *"     # 08:30 Tashkent - kechagi kun yangilangan
-    - cron: "0 5 * * 1"      # Dushanba 10:00 - haftalik
-    - cron: "15 5 1 * *"     # Har oy 1-sanasi 10:15 - oylik
+    - cron: "0 18 * * 0"     # Yakshanba 23:00 - haftalik tahlil (alohida fayl)
+    - cron: "0 4 1 * *"      # Har oy 1-sanasi 09:00 - oylik tahlil (alohida fayl)
   workflow_dispatch:
     inputs:
       mode: {description: "daily / update / weekly / monthly / range", default: "daily"}
+      today: {description: "qayta hisoblash uchun sana YYYY-MM-DD (bo'sh = bugun)", default: ""}
       from: {description: "range uchun YYYY-MM-DD", default: ""}
       to: {description: "range uchun YYYY-MM-DD", default: ""}
 permissions:
@@ -23,15 +24,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
-      - run: pip install requests pandas openpyxl pillow cryptography
+      - run: pip install requests pandas openpyxl pillow cryptography scipy
       - name: Mode
         id: m
         run: |
           case "${{ github.event.schedule }}" in
             "30 12 * * *") echo "mode=daily" >> $GITHUB_OUTPUT;;
             "30 3 * * *")  echo "mode=update" >> $GITHUB_OUTPUT;;
-            "0 5 * * 1")   echo "mode=weekly" >> $GITHUB_OUTPUT;;
-            "15 5 1 * *")  echo "mode=monthly" >> $GITHUB_OUTPUT;;
+            "0 18 * * 0")  echo "mode=weekly" >> $GITHUB_OUTPUT;;
+            "0 4 1 * *")   echo "mode=monthly" >> $GITHUB_OUTPUT;;
             *)             echo "mode=${{ inputs.mode }}" >> $GITHUB_OUTPUT;;
           esac
       - run: python report.py
@@ -43,6 +44,8 @@ jobs:
           SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          ROSTER_KEY: ${{ secrets.ROSTER_KEY }}
+          TODAY: ${{ inputs.today }}
       - name: Save merch results (encrypted)
         if: always()
         run: |
