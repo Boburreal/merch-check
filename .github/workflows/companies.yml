@@ -1,0 +1,23 @@
+name: Companies snapshot (test)
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install requests pandas
+      - run: python companies.py
+        env:
+          SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
+          SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
+      - run: |
+          openssl rand -out /tmp/k.bin 32
+          gzip -c /tmp/companies.csv > /tmp/c.gz
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in /tmp/c.gz -out drop/companies.enc -pass file:/tmp/k.bin
+          openssl pkeyutl -encrypt -pubin -inkey drop_pub.pem -in /tmp/k.bin -out drop/companies.key
+          git config user.name "merch-bot"; git config user.email "bot@users.noreply.github.com"
+          git add drop/companies.* && git commit -m "companies drop" && git pull --rebase -q && git push -q
