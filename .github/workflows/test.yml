@@ -1,0 +1,23 @@
+name: Gemini test (30 visits)
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Gemini model (bo'sh = avtomatik)"
+        required: false
+        default: ""
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests openpyxl
+      - run: python test_run.py
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          GEMINI_MODEL: ${{ inputs.model }}
