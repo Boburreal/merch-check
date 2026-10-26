@@ -50,4 +50,4 @@ jobs:
           git add drop/store 2>/dev/null || exit 0
           git diff --cached --quiet && exit 0
           git commit -m "merch store ${{ steps.m.outputs.mode }}"
-          for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
+          for i in 1 2 3; do git pull --rebase -X ours -q && git push -q && break; sleep 7; done
