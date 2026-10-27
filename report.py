@@ -135,9 +135,17 @@ if MODE in ("daily", "update"):
     f1 = d1.replace(day=1)                                   # month-to-date files
 else:
     f1 = d1
-tp = prepare(fetch(1, f1, d2), 'ТП', loc_log)
+_raw_tp = fetch(1, f1, d2)
+tp = prepare(_raw_tp, 'ТП', loc_log)
 tp = tp[~tp['Лавозим'].str.contains('Медицин')]
-mp = prepare(fetch(4, f1, d2), 'МП', loc_log)
+_raw_mp = fetch(4, f1, d2)
+mp = prepare(_raw_mp, 'МП', loc_log)
+try:                                   # warm the bot's visit cache (pharmacy history answers faster)
+    import vcache
+    if f1.day == 1:                    # only whole months from the 1st (cache assumes no gaps)
+        vcache.put(_raw_tp, 'tp'); vcache.put(_raw_mp, 'mp')
+except Exception as e:
+    print("::warning::vcache " + str(e)[:150])
 tp = enrich(tp, 'ТП', tp_people, comp, 'ТП')
 mp = enrich(mp, 'МП', mp_people, comp, 'МП')
 print(f"::notice::{MODE} {f1}..{d2} tp={len(tp)} mp={len(mp)}")

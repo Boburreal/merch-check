@@ -35,7 +35,14 @@ async function secret(env) {
 function slim(u) {
   if (u.callback_query) {
     const q = u.callback_query;
-    return { chat: q.message.chat.id, mid: q.message.message_id, cb: q.data };
+    let cb = q.data;
+    if (cb.startsWith("go:")) {            // pass the ticked people (indices) to GitHub
+      const rows = (q.message.reply_markup || {}).inline_keyboard || [];
+      const sel = rows.flat().filter((b) => (b.callback_data || "").startsWith("t:") && b.text.startsWith("✅"))
+        .map((b) => b.callback_data.slice(2));
+      cb = cb + ":" + sel.join(",");
+    }
+    return { chat: q.message.chat.id, mid: q.message.message_id, cb };
   }
   const m = u.message;
   if (!m) return null;
@@ -70,10 +77,32 @@ export default {
     if (url.pathname === "/tg" && req.method === "POST") {
       if (req.headers.get("X-Telegram-Bot-Api-Secret-Token") !== sec) return new Response("forbidden", { status: 403 });
       const u = await req.json();
+      const q = u.callback_query;
+      if (q && (q.data || "").startsWith("t:")) {   // tick / untick a person instantly, no GitHub run
+        const kb = ((q.message.reply_markup || {}).inline_keyboard || []).map((row) => row.map((b) => {
+          if (b.callback_data !== q.data) return b;
+          const t = b.text.startsWith("✅") ? "☐" + b.text.slice(1) : "✅" + b.text.slice(1);
+          return { ...b, text: t };
+        }));
+        ctx.waitUntil(fetch(`https://api.telegram.org/bot${env.TG_BOT_TOKEN}/answerCallbackQuery`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ callback_query_id: q.id }) }));
+        return json({ method: "editMessageReplyMarkup", chat_id: q.message.chat.id, message_id: q.message.message_id,
+                      reply_markup: { inline_keyboard: kb } });
+      }
       const s = slim(u);
       if (!s) return new Response("ok");
       ctx.waitUntil(dispatch(env, "bot.yml", { update: JSON.stringify(s) }));
-      if (u.callback_query) return json({ method: "answerCallbackQuery", callback_query_id: u.callback_query.id, text: "⏳ Бажарилмоқда..." });
+      if (q) {
+        const msg = q.data.startsWith("del:") ? "⏳ Ўчирилмоқда..." : q.data.startsWith("go:") ? "⏳ Таҳлил қилинмоқда..."
+          : q.data.startsWith("pick:") ? "⏳ Визитлар йиғилмоқда..." : "";
+        if (msg) ctx.waitUntil(fetch(`https://api.telegram.org/bot${env.TG_BOT_TOKEN}/sendMessage`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: q.message.chat.id, text: msg }) }));
+        return json({ method: "answerCallbackQuery", callback_query_id: q.id, text: msg || "✓" });
+      }
+      if (s.photo || (s.text && !s.text.startsWith("/")))
+        return json({ method: "sendMessage", chat_id: s.chat, text: "⏳ Қабул қилдим, аптека қидирилмоқда..." });
       return json({ method: "sendChatAction", chat_id: s.chat, action: "typing" });
     }
     return new Response("merch-check worker ishlayapti");
