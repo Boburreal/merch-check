@@ -229,12 +229,16 @@ async function deleteIn(jar, cid, dry) {
 
 async function deleteLocation(env, cid, dry = false) {
   const jar = await salesLogin(env);
+  // the account normally stays on project 1 (ТП) - try as is first, switch only when needed (less CPU)
+  const first = await deleteIn(jar, cid, dry);
+  if (first) return first;
   try {
-    for (const p of [1, 4]) {
-      await switchProject(jar, p);
-      const r = await deleteIn(jar, cid, dry);
-      if (r) return r;
-    }
+    await switchProject(jar, 4);
+    const r = await deleteIn(jar, cid, dry);
+    if (r) return r;
+    await switchProject(jar, 1);
+    const r1 = await deleteIn(jar, cid, dry);
+    if (r1) return r1;
     return { st: "failed", name: "", loc: "", msg: "таҳрирлаш саҳифаси очилмади (ТП ва МП лойиҳаларида ҳам)" };
   } finally {
     await switchProject(jar, 1);       // leave the account on "Торговые представители"
