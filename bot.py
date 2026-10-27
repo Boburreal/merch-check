@@ -2,7 +2,7 @@
 Screenshot / text with a pharmacy  -> find it in the base, show 3-month visit history, ask "delete location?"
 Button "Ўчир"                      -> empty the pharmacy's location in Sales (all other fields kept), verify.
 Only Bobur's chat (stored encrypted) is served; nothing is deleted without his button press."""
-import base64, datetime as dt, difflib, json, os, re
+import datetime as dt, json, os, re
 from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
@@ -74,86 +74,121 @@ def companies():
     return c
 
 
-def search(c, name, region='', inn=''):
-    if inn and 'inn' in c:
-        hit = c[c['inn'].astype(str) == str(inn)]
-        if len(hit):
-            return [(1.0, r) for _, r in hit.iterrows()]
+def exact(c, name):
+    """Only pharmacies whose name is exactly the one written (case, quotes, spaces and the word «аптека» ignored)."""
     q = norm(name)
-    if not q:
-        return []
-    rg = norm(region)
-    sc = []
-    for _, r in c.iterrows():
-        s = difflib.SequenceMatcher(None, q, r.n).ratio()
-        if q in r.n or (r.n and r.n in q):
-            s = max(s, 0.85)
-        if rg and rg[:5] in norm(r.region + ' ' + r.district):
-            s += 0.05
-        sc.append((s, r))
-    sc.sort(key=lambda x: -x[0])
-    return sc[:6]
+    return c[c['n'] == q] if q else c[:0]
+
+
+def pick_kb(rows):
+    return [[{"text": f"{r['name'][:30]} · {r.region[:12]} {r.district[:12]} · ID {r.id}", "callback_data": f"pick:{r.id}"}]
+            for _, r in rows.head(8).iterrows()]
 
 
 # ---------------------------------------------------------------- history
 def visits_for(row):
-    from export import fetch
+    import vcache
     d2 = dt.datetime.now(TZ).date()
     d1 = d2 - dt.timedelta(days=DAYS)
     out = []
-    for proj, who in ((1, 'ТП'), (4, 'МП')):
-        v = fetch(proj, d1, d2)
+    for grp, who in (('tp', 'ТП'), ('mp', 'МП')):
+        v = vcache.get(grp, d1, d2)
         if not len(v):
             continue
         obj = v['Контр-агент/Врач'].fillna('')
-        v['obj'] = obj.str.replace(r'\s*\([^()]*\)\s*$', '', regex=True).str.strip()
-        v['reg'] = obj.str.extract(r'\(([^()]*)\)\s*$')[0].fillna('')
+        v = v.assign(obj=obj.str.replace(r'\s*\([^()]*\)\s*$', '', regex=True).str.strip(),
+                     reg=obj.str.extract(r'\(([^()]*)\)\s*$')[0].fillna(''))
         m = v[v['obj'].map(norm) == row.n]
         if row.region and len(m):
             same = m[m['reg'].map(norm).str[:5] == norm(row.region)[:5]]
             m = same if len(same) else m
         m = m.assign(grp=who, emp=m['Фарм. пред'].str.replace(r'\s*\([^()]*\)\s*$', '', regex=True).str.strip())
-        out.append(m)
-    v = pd.concat(out) if out else pd.DataFrame()
-    if len(v):
-        v['t'] = pd.to_datetime(v['Время завершения визита'], format='%d.%m.%Y %H:%M', errors='coerce')
-        v = v.sort_values('t', ascending=False)
-    return v, d1, d2
+        out.append(m[['emp', 'grp', 'Время завершения визита']])
+    v = pd.concat(out) if out else pd.DataFrame(columns=['emp', 'grp', 'Время завершения визита'])
+    v['t'] = pd.to_datetime(v['Время завершения визита'], format='%d.%m.%Y %H:%M', errors='coerce')
+    return v.sort_values('t', ascending=False), d1, d2
 
 
-def report(row, shot=None):
-    v, d1, d2 = visits_for(row)
+def header(row):
     lat, lon = pd.to_numeric(row.lat, errors='coerce'), pd.to_numeric(row.lon, errors='coerce')
     L = [f"🏥 <b>{esc(row['name'])}</b>  (ID {row.id})",
          f"📍 {esc(row.region)}{', ' + esc(row.district) if row.district else ''}"]
     if row.reps:
-        L.append(f"👤 Бириктирилган: {esc(row.reps)}")
-    if pd.notna(lat):
-        L.append(f"🗺 Локация: <a href=\"https://yandex.uz/maps/?pt={lon},{lat}&z=18&l=map\">{lat:.6f}, {lon:.6f}</a>")
-    else:
-        L.append("🗺 Локация: <b>йўқ</b> (базада ҳозир ўчирилган)")
+        L.append(f"📌 Базада бириктирилган: {esc(row.reps)}")
+    L.append(f"🗺 Локация: <a href=\"https://yandex.uz/maps/?pt={lon},{lat}&z=18&l=map\">{lat:.6f}, {lon:.6f}</a>"
+             if pd.notna(lat) else "🗺 Локация: <b>йўқ</b> (базада ҳозир бўш)")
+    return L, pd.notna(lat)
+
+
+def ask_people(row, shot=None):
+    """Step 1: list everyone who visited (3 months) + people attached in the base; Bobur ticks the attached ones."""
+    v, d1, d2 = visits_for(row)
+    g = (v.groupby(['emp', 'grp']).size().reset_index(name='n').sort_values('n', ascending=False)
+         if len(v) else pd.DataFrame(columns=['emp', 'grp', 'n']))
+    people = [(r.emp, r.grp, int(r.n)) for r in g.itertuples()]
+    known = {norm(p[0]) for p in people}
+    for rep in re.split(r'[,;\n]', row.reps or ''):
+        rep = re.sub(r'\s*\([^()]*\)\s*$', '', rep).strip()
+        if rep and norm(rep) not in known:
+            people.append((rep, '—', 0)); known.add(norm(rep))
+    people = people[:24]
+    store.save(f'ctx_{row.id}', pd.DataFrame(people, columns=['emp', 'grp', 'n']))
+    store.save(f'ctxv_{row.id}', v[['emp', 'grp', 'Время завершения визита']])
+    L, _ = header(row)
+    if shot:
+        L.append(f"📩 Скриншотда: {esc(shot.get('sender') or '—')}: «{esc(shot.get('request') or '')}»")
+    L.append(f"\n📊 {d1:%d.%m}–{d2:%d.%m.%Y}: <b>{len(v)}</b> та визит, {len(g)} ходим.")
+    if not people:
+        L.append("Бу аптекага 3 ойда ҳеч ким бормаган ва базада ҳеч ким бириктирилмаган.")
+    L.append("\n👇 <b>Бу аптекага қайси ходимлар бириктирилган?</b> Белгиланг ва «Тайёр» ни босинг.")
+    kb = [[{"text": f"☐ {p[0][:28]} · {p[1]} · {p[2]}", "callback_data": f"t:{i}"}] for i, p in enumerate(people)]
+    kb.append([{"text": "✅ Тайёр", "callback_data": f"go:{row.id}"}, {"text": "❌ Бекор", "callback_data": f"no:{row.id}"}])
+    say("\n".join(L), kb)
+
+
+def analytics(row, sel):
+    """Step 2: analysis against the people Bobur marked as attached, then ask to delete."""
+    people = store.load(f'ctx_{row.id}')
+    v = store.load(f'ctxv_{row.id}')
+    if not len(people) and not len(v):
+        vv, _, _ = visits_for(row)
+        v = vv[['emp', 'grp', 'Время завершения визита']]
+    v = v.copy()
+    v['t'] = pd.to_datetime(v['Время завершения визита'], format='%d.%m.%Y %H:%M', errors='coerce')
+    v = v.sort_values('t', ascending=False)
+    chosen = {norm(people.iloc[i]['emp']) for i in sel if i < len(people)}
+    L, has_loc = header(row)
+    d2 = dt.datetime.now(TZ).date(); d1 = d2 - dt.timedelta(days=DAYS)
+    L.append(f"\n📊 <b>Охирги 3 ой ({d1:%d.%m}–{d2:%d.%m.%Y}): {len(v)} та визит</b>")
+    L.append("\n✅ <b>Бириктирилган ходимлар (сиз белгилаган):</b>")
+    if not chosen:
+        L.append(" — ҳеч ким белгиланмади")
+    for i in sel:
+        if i >= len(people):
+            continue
+        p = people.iloc[i]
+        m = v[v['emp'].map(norm) == norm(p['emp'])]
+        if len(m):
+            L.append(f" • {esc(p['emp'])} ({m.grp.iloc[0]}) — <b>{len(m)}</b> марта, "
+                     f"{m.t.min():%d.%m}…{m.t.max():%d.%m.%Y}, охиргиси {(pd.Timestamp(d2) - m.t.max().normalize()).days} кун олдин")
+        else:
+            L.append(f" • {esc(p['emp'])} — ⚠️ 3 ойда <b>бирор марта ҳам бормаган</b>")
+    other = v[~v['emp'].map(norm).isin(chosen)]
+    if len(other):
+        L.append("\n❗️ <b>Бириктирилмаган, лекин визит қилган:</b>")
+        for (e, g), m in other.groupby(['emp', 'grp']):
+            L.append(f" • {esc(e)} ({g}) — <b>{len(m)}</b> марта, {m.t.min():%d.%m}…{m.t.max():%d.%m.%Y}")
+    if len(v):
+        L.append("\n🕒 Охирги визитлар:")
+        L += [f" {r.t:%d.%m %H:%M} — {esc(r.emp)} ({r.grp})" for r in v.head(8).itertuples()]
+        months = v['t'].dt.strftime('%m.%Y').value_counts().sort_index()
+        L.append("📅 Ойлар бўйича: " + ", ".join(f"{k}: {n}" for k, n in months.items()))
     lg = store.load('loc_log')
     if len(lg):
         lg = lg[lg['ID'].astype(str) == str(row.id)]
         if len(lg):
-            L.append("\n🔁 <b>Локация ўзгаришлари</b> (кузатув бошланганидан):")
-            for r in lg.tail(8).itertuples(index=False):
-                L.append(f" • {r[1]} — {r[7]}")
-    same = (companies()['n'] == row.n).sum()
-    if same > 1:
-        L.append(f"\nℹ️ Базада шу номли {same} та аптека бор — визитлар ҳудуди бўйича ажратилди.")
-    L.append(f"\n📊 <b>Охирги 3 ой ({d1:%d.%m}–{d2:%d.%m.%Y}): {len(v)} та визит</b>")
-    if len(v):
-        g = v.groupby(['grp', 'emp']).agg(n=('t', 'size'), last=('t', 'max'), first=('t', 'min')).reset_index()
-        for r in g.sort_values('n', ascending=False).itertuples():
-            L.append(f" • {esc(r.emp)} ({r.grp}) — <b>{r.n}</b> марта, {r.first:%d.%m}…{r.last:%d.%m.%Y}")
-        L.append("\n🕒 Охирги визитлар:")
-        for r in v.head(10).itertuples():
-            L.append(f" {r.t:%d.%m %H:%M} — {esc(r.emp)} ({r.grp})")
-        months = v['t'].dt.strftime('%m.%Y').value_counts().sort_index()
-        L.append("📅 Ойлар бўйича: " + ", ".join(f"{k}: {n}" for k, n in months.items()))
-    else:
-        L.append(" Бу даврда ҳеч ким визит қилмаган.")
+            L.append("\n🔁 <b>Локация ўзгаришлари:</b>")
+            L += [f" • {r[1]} — {r[7]}" for r in lg.tail(6).itertuples(index=False)]
     offs = []
     for grp in ('tp', 'mp'):
         o = store.load(f'offenses_{grp}')
@@ -162,18 +197,11 @@ def report(row, shot=None):
             offs += [f"{r.date[8:10]}.{r.date[5:7]} {esc(r.who)}: {TYPES.get(r.type, r.type)}" for r in o.itertuples()]
     if offs:
         L.append("\n⚠️ <b>Шу аптекадаги шубҳали визитлар:</b>")
-        L += [" • " + x for x in offs[-8:]]
-    if shot:
-        L.append(f"\n📩 Скриншотда: {esc(shot.get('sender') or '—')}: «{esc(shot.get('request') or '')}»")
-        snd = norm(shot.get('sender', ''))
-        if snd and len(v):
-            hit = v[v['emp'].map(norm).str.contains(snd.split()[0], regex=False)] if snd.split() else v[:0]
-            L.append(f"   Сўраган ходим бу аптекага 3 ойда {len(hit)} марта борган." if len(hit)
-                     else "   Сўраган ходим бу аптекага 3 ойда борган эмас (ёки исми мос келмади).")
+        L += [" • " + x for x in offs[-6:]]
     kb = None
-    if pd.notna(lat):
-        L.append("\nЛокацияни ўчирайми?")
-        kb = [[{"text": "🗑 Ҳа, локацияни ўчир", "callback_data": f"del:{row.id}"},
+    if has_loc:
+        L.append("\n<b>Локацияни ўчирайми?</b>")
+        kb = [[{"text": "🗑 Ҳа, ўчир", "callback_data": f"del:{row.id}"},
                {"text": "❌ Йўқ", "callback_data": f"no:{row.id}"}]]
     say("\n".join(L), kb)
 
@@ -261,26 +289,29 @@ def main():
         print("::notice::ignored foreign chat")
         return
     if u.get("cb"):
-        act, _, cid = u["cb"].partition(":")
-        tg("editMessageReplyMarkup", chat_id=OWNER, message_id=u["mid"], reply_markup={"inline_keyboard": []})
+        act, _, rest = u["cb"].partition(":")
+        cid, _, sel = rest.partition(":")
         cid = int(cid)
+        if act in ("no", "del", "go", "pick"):
+            tg("editMessageReplyMarkup", chat_id=OWNER, message_id=u["mid"], reply_markup={"inline_keyboard": []})
+        c = companies()
+        row = c[c.id == cid]
         if act == "no":
             say("❌ Бекор қилинди, локацияга тегилмади.")
         elif act == "pick":
-            c = companies()
-            say("⏳ Охирги 3 ойлик визитлар йиғилмоқда (1–2 дақиқа)...")
-            report(c[c.id == cid].iloc[0])
+            ask_people(row.iloc[0])
+        elif act == "go":
+            analytics(row.iloc[0], [int(x) for x in sel.split(",") if x.isdigit()])
         elif act == "del":
-            say("⏳ Локация ўчирилмоқда...")
             name, old, st = delete_location(cid)
             if st == "ok":
                 say(f"✅ <b>{esc(name)}</b> (ID {cid}) — локация ўчирилди.\nЭски координата: <code>{esc(old)}</code>\n"
-                    "Бошқа маълумотлари ўзгармади (текширилди). Кимдир янги локация қўйса, сизга хабар бераман.")
+                    "Бошқа маълумотлари ўзгармади (текширилди). Кимдир янги локация қўйса, хабар бераман.")
             elif st == "already":
                 say(f"ℹ️ <b>{esc(name)}</b> (ID {cid}) — локацияси аллақачон бўш экан.")
             elif st.startswith("changed:"):
                 say(f"⚠️ <b>{esc(name)}</b> (ID {cid}) — локация ўчди, лекин бошқа майдонлар ҳам ўзгарган кўринди: "
-                    f"{esc(st[8:])}. Илтимос, Sales'да шу аптекани текшириб кўринг.")
+                    f"{esc(st[8:])}. Sales'да шу аптекани текшириб кўринг.")
             else:
                 say(f"❗️ <b>{esc(name)}</b> (ID {cid}) — ўчмади: {esc(st)}. Қўлда текшириб кўринг.")
         return
@@ -301,33 +332,26 @@ def main():
     shot = None
     c = companies()
     if u.get("photo"):
-        say("⏳ Скриншот ўқилмоқда...")
         shot = read_screenshot(u["photo"])
-        q, reg, inn = shot.get("pharmacy", ""), shot.get("region", "") + " " + shot.get("address", ""), shot.get("inn", "")
-        if not q and not inn:
-            say("Скриншотдан аптека номини топа олмадим. Илтимос, номини ёки ID сини ёзинг.")
+        q = shot.get("pharmacy", "")
+        if not q:
+            say("Скриншотдан аптека номини топа олмадим. Номини ёки ID сини ёзинг.")
             return
     elif text.isdigit() and int(text) in set(c.id):
-        say("⏳ Охирги 3 ойлик визитлар йиғилмоқда (1–2 дақиқа)...")
-        report(c[c.id == int(text)].iloc[0])
+        ask_people(c[c.id == int(text)].iloc[0])
         return
     elif text:
-        q, reg, inn = (u.get("caption") or text), "", ""
+        q = text
     else:
         return
-    found = search(c, q, reg, inn)
-    head = f"🔎 Скриншотдан: <b>{esc(q)}</b> {esc(reg.strip())}\n" if shot else ""
-    if not found or found[0][0] < 0.55:
-        say(head + "Базадан мос аптека топилмади. Номини аниқроқ ёки ID сини ёзинг.")
-        return
-    best = found[0]
-    if best[0] >= 0.9 and (len(found) == 1 or found[1][0] < best[0] - 0.08):
-        say(head + "⏳ Аптека топилди, охирги 3 ойлик визитлар йиғилмоқда (1–2 дақиқа)...")
-        report(best[1], shot)
-        return
-    kb = [[{"text": f"{r['name'][:38]} · {r.region[:12]} · ID {r.id}", "callback_data": f"pick:{r.id}"}]
-          for s, r in found if s >= 0.5][:6]
-    say(head + "Қайси аптека? Танланг:", kb)
+    hit = exact(c, q)
+    src = f"🔎 Скриншотдаги ном: <b>{esc(q)}</b>\n" if shot else ""
+    if not len(hit):
+        say(src + "Базада айнан шу номли аптека йўқ. Номини Sales'дагидек ёзинг ёки ID сини юборинг.")
+    elif len(hit) == 1:
+        ask_people(hit.iloc[0], shot)
+    else:
+        say(src + f"Базада айнан шу номли {len(hit)} та аптека бор. Қайси бири?", pick_kb(hit))
 
 
 if __name__ == "__main__":
