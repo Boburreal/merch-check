@@ -129,6 +129,8 @@ def _ask(model: str, photos: list[bytes]) -> dict:
         STATS["requests"] += 1
         r = requests.post(f"{API}/models/{model}:generateContent",
                           headers={"x-goog-api-key": GEMINI_KEY}, json=body, timeout=180)
+        if r.status_code in (403, 404):        # model retired / not available for this key -> next model
+            raise DailyQuotaExceeded(f"{model}: HTTP {r.status_code}")
         if r.status_code == 429 and ("PerDay" in r.text or "per day" in r.text.lower()):
             raise DailyQuotaExceeded(r.text[:200])
         if r.status_code == 429:
