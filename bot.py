@@ -292,8 +292,7 @@ def main():
         act, _, rest = u["cb"].partition(":")
         cid, _, sel = rest.partition(":")
         cid = int(cid)
-        if act in ("no", "del", "go", "pick"):
-            tg("editMessageReplyMarkup", chat_id=OWNER, message_id=u["mid"], reply_markup={"inline_keyboard": []})
+        print(f"::notice::action={act} id={cid}")
         c = companies()
         row = c[c.id == cid]
         if act == "no":

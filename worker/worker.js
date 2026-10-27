@@ -96,10 +96,13 @@ export default {
       if (q) {
         const msg = q.data.startsWith("del:") ? "⏳ Ўчирилмоқда..." : q.data.startsWith("go:") ? "⏳ Таҳлил қилинмоқда..."
           : q.data.startsWith("pick:") ? "⏳ Визитлар йиғилмоқда..." : "";
-        if (msg) ctx.waitUntil(fetch(`https://api.telegram.org/bot${env.TG_BOT_TOKEN}/sendMessage`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: q.message.chat.id, text: msg }) }));
-        return json({ method: "answerCallbackQuery", callback_query_id: q.id, text: msg || "✓" });
+        const tgp = (method, body) => ctx.waitUntil(fetch(`https://api.telegram.org/bot${env.TG_BOT_TOKEN}/${method}`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+        tgp("answerCallbackQuery", { callback_query_id: q.id, text: msg || "✓" });
+        if (msg) tgp("sendMessage", { chat_id: q.message.chat.id, text: msg });
+        // remove the buttons at once so a second tap cannot start the same job twice
+        return json({ method: "editMessageReplyMarkup", chat_id: q.message.chat.id, message_id: q.message.message_id,
+                      reply_markup: { inline_keyboard: [] } });
       }
       if (s.photo || (s.text && !s.text.startsWith("/")))
         return json({ method: "sendMessage", chat_id: s.chat, text: "⏳ Қабул қилдим, аптека қидирилмоқда..." });
