@@ -155,6 +155,8 @@ def coverage(emp_key, visits, comp, hist=None):
 
 # ---------------------------------------------------------------- the check
 def run(target, code):
+    T0 = time.time()
+    step = lambda m: print(f"::notice::{int(time.time() - T0)}s {m}", flush=True)
     from export import fetch
     from analysis import prepare
     from checks import enrich, TYPES
@@ -177,6 +179,7 @@ def run(target, code):
         comp[k] = comp[k].fillna('').astype(str)
     loc_log = store.load('loc_log')
 
+    step('start')
     parts = {}
     for grp, proj in (('ТП', 1), ('МП', 4)):
         if not (team.grp == grp).any():
@@ -188,6 +191,7 @@ def run(target, code):
         t = t[t[grp].map(R.key).isin(keys)].copy()
         t['who'] = t[grp]
         parts[grp] = t
+    step('fetched')
     tp = parts.get('ТП', pd.DataFrame())
     merch = merch_for(tp, d1, d2) if len(tp) else pd.DataFrame(columns=['id', 'category', 'vitrina', 'kassa', 'comment'])
     if len(tp):
@@ -224,6 +228,7 @@ def run(target, code):
         hv = hv[hv.k.isin(keys)]
         for (k, n), d in hv.groupby(['k', 'n'])['d'].max().items():
             hist.setdefault(k, {})[n] = d
+    step('history')
     summ, cov_rows = [], []
     for r in team.itertuples():
         v = allv[allv['who'].map(R.key) == r.key] if len(allv) else allv
@@ -254,6 +259,7 @@ def run(target, code):
 
     # ---------- Excel
     path = f"/tmp/Проверка {title.replace('/', '-')} {d1:%d.%m}-{d2:%d.%m.%Y}.xlsx"
+    step('summary')
     wb = Workbook()
     hdr = PatternFill('solid', fgColor='1F4E78'); red = PatternFill('solid', fgColor='F8CBAD')
     yel = PatternFill('solid', fgColor='FFF2CC'); grn = PatternFill('solid', fgColor='E2EFDA')
