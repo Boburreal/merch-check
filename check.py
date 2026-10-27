@@ -240,10 +240,10 @@ def run(target, code):
             x.alignment = Alignment(wrap_text=True, vertical='center')
         for i, row in enumerate(df.itertuples(index=False), start + 1):
             for j, val in enumerate(row, 1):
-                if isinstance(val, (pd.Timestamp, dt.date)):
-                    val = val.strftime('%d.%m.%Y')
-                elif val is None or (isinstance(val, float) and pd.isna(val)) or val is pd.NaT:
+                if val is None or val is pd.NaT or (isinstance(val, float) and pd.isna(val)):
                     val = None
+                elif isinstance(val, (pd.Timestamp, dt.date)):
+                    val = val.strftime('%d.%m.%Y')
                 elif hasattr(val, 'item'):
                     val = val.item()
                 ws.cell(i, j, val)
