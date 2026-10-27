@@ -3,12 +3,13 @@ from sales import login, switch_project, BASE
 s = login(); switch_project(s, 1)
 r = s.get(BASE + "/lists/companies/10/edit", timeout=60)
 t = r.text
-forms = re.findall(r'<form[^>]*>', t)
-print(f"::notice::status={r.status_code} forms={forms}"[:3000])
-for m in re.finditer(r'<(input|select|textarea)([^>]*)>', t):
+i = t.find('class="edit_form"'); f = t[i:t.find('</form>', i)]
+fl = []
+for m in re.finditer(r'<(input|select|textarea)([^>]*)>', f):
     a = m.group(2)
     nm = re.search(r'name="([^"]+)"', a); ty = re.search(r'type="([^"]+)"', a); v = re.search(r'value="([^"]*)"', a)
-    wm = re.findall(r'wire:model[^=]*="([^"]+)"', a)
-    print(f"::notice::{m.group(1)} name={nm and nm.group(1)} type={ty and ty.group(1)} has_value={bool(v and v.group(1))} wire={wm}")
-lw = [ (re.search(r'"name":"([^"]+)"', x) or [None,None])[1] for x in re.findall(r'wire:snapshot="([^"]+)"', t.replace('&quot;','"'))]
-print(f"::notice::livewire={lw} buttons={re.findall(r'<button[^>]*>[^<]{0,40}', t)[:10]}"[:3000])
+    fl.append(f"{m.group(1)}:{nm and nm.group(1)}:{ty and ty.group(1)}:{'v' if v and v.group(1) else '-'}")
+print("::notice::FIELDS " + " | ".join(fl))
+js = [x for x in re.findall(r'<script[^>]*>(.*?)</script>', t, flags=re.S) if 'edit_form' in x or 'location' in x.lower()]
+print("::notice::JS " + re.sub(r'\s+', ' ', " ### ".join(js))[:3500])
+print("::notice::BTN " + str(re.findall(r'<button[^>]*>[^<]{0,40}', f))[:1500])
