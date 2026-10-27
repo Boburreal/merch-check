@@ -1,0 +1,9 @@
+name: Worker check
+on: workflow_dispatch
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          r=$(curl -s https://hidden-butterfly-0ea1.boburreal3399.workers.dev/setup)
+          echo "$r" | while read l; do echo "::notice::$l"; done
