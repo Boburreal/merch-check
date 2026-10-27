@@ -131,8 +131,10 @@ def merch_for(tp: pd.DataFrame, d1, d2):
 
 
 # ---------------------------------------------------------------- coverage of attached pharmacies
-def coverage(emp_key, visits, comp):
+def coverage(emp_key, visits, comp, hist=None):
+    """hist: {pharmacy norm name -> last visit date in the last 3 months} for this employee."""
     from bot import norm
+    hist = hist or {}
     reps_keys = comp['reps'].fillna('').map(lambda s: {R.key(x.strip()) for x in s.split(',') if x.strip()})
     att = comp[reps_keys.map(lambda ks: emp_key in ks)]
     vn = visits.assign(n=visits['obj'].map(norm))
@@ -141,13 +143,14 @@ def coverage(emp_key, visits, comp):
     for r in att.itertuples():
         x = cnt.loc[norm(r.name)] if norm(r.name) in cnt.index else None
         rows.append({'id': r.id, 'name': r.name, 'district': r.district, 'att': True,
-                     'k': int(x.k) if x is not None else 0, 'last': x['last'] if x is not None else None})
+                     'k': int(x.k) if x is not None else 0, 'last': x['last'] if x is not None else None,
+                     'h': hist.get(norm(r.name))})
     att_n = {norm(n) for n in att['name']}
     for n, x in cnt.iterrows():
         if n not in att_n:
             nm = vn[vn.n == n]['obj'].iloc[0]
-            rows.append({'id': '', 'name': nm, 'district': '', 'att': False, 'k': int(x.k), 'last': x['last']})
-    return pd.DataFrame(rows, columns=['id', 'name', 'district', 'att', 'k', 'last'])
+            rows.append({'id': '', 'name': nm, 'district': '', 'att': False, 'k': int(x.k), 'last': x['last'], 'h': hist.get(n)})
+    return pd.DataFrame(rows, columns=['id', 'name', 'district', 'att', 'k', 'last', 'h'])
 
 
 # ---------------------------------------------------------------- the check
@@ -200,6 +203,26 @@ def run(target, code):
     allv = pd.concat(parts.values(), ignore_index=True) if parts else pd.DataFrame()
 
     # ---------- summary per employee
+    # last visit of each employee to each pharmacy in the last 3 months (from the visit cache)
+    from bot import norm
+    import vcache
+    hist = {}
+    h2 = dt.datetime.now(TZ).date(); h1 = h2 - dt.timedelta(days=92)
+    for grp, g in (('tp', 'ТП'), ('mp', 'МП')):
+        if not (team.grp == g).any():
+            continue
+        try:
+            hv = vcache.get(grp, h1, h2)
+        except Exception as e:
+            print("::warning::history " + str(e)[:120]); continue
+        if not len(hv):
+            continue
+        hv = hv.assign(k=hv['Фарм. пред'].str.replace(r'\s*\([^()]*\)\s*$', '', regex=True).map(R.key),
+                       n=hv['Контр-агент/Врач'].fillna('').str.replace(r'\s*\([^()]*\)\s*$', '', regex=True).map(norm),
+                       d=pd.to_datetime(hv['Дата'], format='%d.%m.%Y', errors='coerce'))
+        hv = hv[hv.k.isin(keys)]
+        for (k, n), d in hv.groupby(['k', 'n'])['d'].max().items():
+            hist.setdefault(k, {})[n] = d
     summ, cov_rows = [], []
     for r in team.itertuples():
         v = allv[allv['who'].map(R.key) == r.key] if len(allv) else allv
@@ -216,7 +239,7 @@ def run(target, code):
                         'Витрина': int(v['vit'].sum()), 'Касса': int(v['kas'].sum()),
                         'Без мерча': int(c.eq('none').sum()), 'Крупный план': int(c.eq('suspicious').sum()),
                         'Не проверено': int((~c.isin(['merch', 'none', 'suspicious'])).sum())})
-        cv = coverage(r.key, v if len(v) else pd.DataFrame(columns=['obj', 'id', 'day']), comp)
+        cv = coverage(r.key, v if len(v) else pd.DataFrame(columns=['obj', 'id', 'day']), comp, hist.get(r.key))
         att = cv[cv.att]
         row.update({'Закреплено аптек': len(att), 'Посещено закреплённых': int((att.k > 0).sum()),
                     'Не посещено': int((att.k == 0).sum()),
@@ -282,14 +305,22 @@ def run(target, code):
 
     ws = wb.create_sheet('Охват аптек')
     if len(C):
-        C = C.sort_values(['emp', 'att', 'k'], ascending=[True, False, True])
+        # visited first (most visits on top), then not visited - the longest-abandoned at the bottom
+        C = C.assign(_v=C['k'] > 0, _h=pd.to_datetime(C['h']).fillna(pd.Timestamp('1900-01-01')))
+        C = C.sort_values(['emp', '_v', 'k', 'att', '_h'], ascending=[True, False, False, False, False])
+        today = pd.Timestamp(dt.datetime.now(TZ).date())
+        ago = [None if pd.isna(x) else int(x) for x in (today - pd.to_datetime(C['h'])).dt.days]
         V = pd.DataFrame({'Сотрудник': C['emp'], 'ID аптеки': C['id'], 'Аптека': C['name'], 'Район': C['district'],
-                          'Закреплена': C['att'].map({True: 'да', False: 'нет'}), 'Визитов': C['k'], 'Последний визит': C['last']})
-        table(ws, V, 1, {'Сотрудник': 30, 'Аптека': 40, 'Район': 22})
+                          'Закреплена': C['att'].map({True: 'да', False: 'нет'}), 'Визитов': C['k'], 'Последний визит': C['last'],
+                          'Последний визит за 3 мес.': pd.to_datetime(C['h']),
+                          'Дней назад': ago,
+                          'Статус': [('нет визитов 3 мес.' if pd.isna(h) else 'не посещена в периоде') if a and k == 0
+                                     else ('не закреплена' if not a else 'ок') for a, k, h in zip(C['att'], C['k'], C['h'])]})
+        table(ws, V, 1, {'Сотрудник': 30, 'Аптека': 40, 'Район': 22, 'Последний визит за 3 мес.': 14, 'Статус': 22})
         for i, (a, k) in enumerate(zip(C['att'], C['k']), 2):
             f = red if a and k == 0 else yel if not a else None
             if f:
-                for j in range(1, 8):
+                for j in range(1, 11):
                     ws.cell(i, j).fill = f
 
     ws = wb.create_sheet('Пояснение')
