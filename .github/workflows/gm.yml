@@ -1,0 +1,20 @@
+name: Gemini models check
+on: workflow_dispatch
+jobs:
+  g:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install requests pillow
+      - run: |
+          python - <<'PY'
+          import requests, merch
+          for m in merch._models():
+              r = requests.post(f"{merch.API}/models/{m}:generateContent", headers={"x-goog-api-key": merch.GEMINI_KEY},
+                                json={"contents": [{"parts": [{"text": "Say OK"}]}]}, timeout=60)
+              print(f"::notice::{m}: {r.status_code} {'PerDay' if 'PerDay' in r.text else ''}")
+          PY
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

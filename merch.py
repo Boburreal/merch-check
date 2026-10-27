@@ -56,21 +56,32 @@ def ref_parts():
     return _REF
 
 
-def pick_model():
-    if os.environ.get("GEMINI_MODEL"):
-        return os.environ["GEMINI_MODEL"]
+_CHAIN = []          # all usable free models, best first; a model whose daily quota is used up is skipped
+_DEAD = set()
+
+
+def _models():
     r = requests.get(f"{API}/models", headers={"x-goog-api-key": GEMINI_KEY}, timeout=30)
     r.raise_for_status()
     names = [m["name"].split("/")[-1] for m in r.json().get("models", [])
              if "generateContent" in m.get("supportedGenerationMethods", [])]
-    flash = [n for n in names if "flash" in n and "image" not in n and "tts" not in n
-             and "live" not in n and "audio" not in n]
-    # prefer the newest flash-lite (largest free daily quota), then flash
-    for pref in ("flash-lite", "flash"):
-        c = sorted([n for n in flash if pref in n and "preview" not in n and "exp" not in n], reverse=True)
-        if c:
-            return c[0]
-    return sorted(flash, reverse=True)[0]
+    flash = [n for n in names if "flash" in n and not any(x in n for x in ("image", "tts", "live", "audio", "exp", "preview", "thinking"))]
+    lite = sorted([n for n in flash if "lite" in n], reverse=True)
+    full = sorted([n for n in flash if "lite" not in n], reverse=True)
+    # each model has its own free daily quota: flash-lite first (tested ~75%), then flash models
+    return lite + full
+
+
+def pick_model():
+    global _CHAIN
+    if os.environ.get("GEMINI_MODEL"):
+        return os.environ["GEMINI_MODEL"]
+    if not _CHAIN:
+        _CHAIN = _models()
+    alive = [m for m in _CHAIN if m not in _DEAD]
+    if not alive:
+        raise DailyQuotaExceeded("all free Gemini models used up today")
+    return alive[0]
 
 
 def download(url: str) -> bytes | None:
@@ -92,6 +103,22 @@ class DailyQuotaExceeded(Exception):
 
 
 def ask_gemini(model: str, photos: list[bytes]) -> dict:
+    """Uses `model`; when its free daily quota is used up, continues with the next free model."""
+    while True:
+        if model in _DEAD and not os.environ.get("GEMINI_MODEL"):
+            model = pick_model()
+        try:
+            return _ask(model, photos)
+        except DailyQuotaExceeded:
+            if os.environ.get("GEMINI_MODEL"):
+                raise
+            if model not in _DEAD:
+                _DEAD.add(model)
+                print(f"::warning::Gemini {model}: daily free quota used up - switching model")
+            model = pick_model()          # raises DailyQuotaExceeded when nothing is left
+
+
+def _ask(model: str, photos: list[bytes]) -> dict:
     parts = [{"text": PROMPT}] + ref_parts()
     for i, p in enumerate(photos, 1):
         parts += [{"text": f"PHOTO {i}"}, _img_part(p)]

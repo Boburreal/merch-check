@@ -27,6 +27,7 @@ MERCH_MIN = int(os.environ.get("MERCH_MINUTES", "80"))
 ACC = ("Мерч бепул Google Gemini (Flash-Lite) ИИ билан текширилади. Синовда 30 визитдан 22–23 тасида "
        "сизнинг баҳойингиз билан мос келди (≈75%). Шубҳали қаторларни фото линки орқали текширинг.")
 now = dt.datetime.now(TZ)
+START = time.time()            # one merch time budget for the whole run (today + backlog)
 today = dt.date.fromisoformat(os.environ['TODAY']) if os.environ.get('TODAY') else now.date()
 # scheduled runs come from two clocks (Cloudflare Worker on time + GitHub schedule as backup): send only once
 AUTO = os.environ.get('AUTO') == '1'
@@ -64,12 +65,16 @@ def merch_for_day(day: dt.date, tp: pd.DataFrame) -> pd.DataFrame:
         done = set(old['id'].astype(int))
     todo = tp[(tp.day.dt.date == day) & ~tp.id.isin(done) & tp['Лавозим'].str.contains('Торг')]
     rows, t0 = [], time.time()
+    try:
+        model = pick_model() if len(todo) else None
+    except DailyQuotaExceeded:
+        print(f"::warning::merch {day}: free AI limit used up today, {len(todo)} visits left for the next run")
+        todo = todo[:0]
     if len(todo):
-        model = pick_model()
         stop = False
 
         def work(r):
-            if stop or time.time() - t0 > MERCH_MIN * 60:
+            if stop or time.time() - START > MERCH_MIN * 60:
                 return None
             try:
                 res = check_visit(model, r['Фото 1'], r['Фото 2'])
@@ -152,6 +157,14 @@ print(f"::notice::{MODE} {f1}..{d2} tp={len(tp)} mp={len(mp)}")
 
 if MODE in ("daily", "update"):
     merch_for_day(d2, tp)
+    # backlog: earlier days of the month whose visits were not checked yet (e.g. the free AI limit ran out)
+    for back in sorted({x.date() for x in tp.day} - {d2}, reverse=True):
+        if time.time() - START > MERCH_MIN * 60:
+            break
+        try:
+            merch_for_day(back, tp)
+        except Exception as e:
+            print("::warning::backlog " + str(e)[:150]); break
 merch = stored_merch(f1, d2)
 m = tp[['id']].merge(merch, on='id', how='left') if len(merch) else tp[['id']].assign(category=None)
 tp['f_closeup'] = m['category'].eq('suspicious').values

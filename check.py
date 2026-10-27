@@ -14,6 +14,7 @@ import store
 TZ = ZoneInfo("Asia/Tashkent")
 MERCH_MIN = 20          # minutes of AI merch checking per request at most
 MERCH_CAP = 400         # visits per request at most (keeps the free daily quota for the daily report)
+MERCH_INFO = {'quota': False}
 PERIODS = {'w0': 'Шу ҳафта', 'w1': 'Ўтган ҳафта', 'm0': 'Шу ой', 'm1': 'Ўтган ой'}
 REG_ALIAS = {'ташкент шахар': 'г.Ташкент', 'тошкент шахар': 'г.Ташкент', 'г.ташкент': 'г.Ташкент',
              'ташкент вил': 'Ташкентская', 'тошкент вил': 'Ташкентская', 'т.обл': 'Ташкентская',
@@ -95,8 +96,12 @@ def merch_for(tp: pd.DataFrame, d1, d2):
             have |= set(m['id'].astype(int))
     todo = tp[~tp.id.isin(have)].head(MERCH_CAP)
     new, t0, stop = {}, time.time(), [False]
+    try:
+        model = pick_model() if len(todo) else None
+    except DailyQuotaExceeded:
+        stop[0] = True
+        todo = todo[:0]
     if len(todo):
-        model = pick_model()
 
         def work(r):
             if stop[0] or time.time() - t0 > MERCH_MIN * 60:
@@ -127,6 +132,7 @@ def merch_for(tp: pd.DataFrame, d1, d2):
     m = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=['id', 'category', 'vitrina', 'kassa', 'comment'])
     m['id'] = m['id'].astype(int)
     print(f"::notice::merch todo={len(todo)} checked_now={sum(len(v) for v in new.values())} quota_stop={stop[0]}")
+    MERCH_INFO['quota'] = stop[0]
     return m.drop_duplicates('id', keep='last')
 
 
@@ -372,6 +378,13 @@ def run(target, code):
         if d['Должность'] == 'ТП' and pd.notna(d.get('Мерч проверено')):
             line += f", мерч: витрина {int(d.get('Витрина') or 0)}, касса {int(d.get('Касса') or 0)}"
         L.append(line)
+    if len(tp):
+        left = int((~tp['cat'].isin(['merch', 'none', 'suspicious', 'no_photo'])).sum())
+        if left:
+            why = ("бугунги бепул ИИ лимити тугади" if MERCH_INFO['quota'] else
+                   f"бир сўровда кўпи билан {MERCH_CAP} та визит / {MERCH_MIN} дақиқа текширилади")
+            L += ["", f"⚠️ {left} та визитнинг мерчи ҳали текширилмаган ({why}). Улар ҳар кунги ҳисобот пайтида аста-секин "
+                      "текширилади; эртага шу текширувни қайта сўрасангиз, тўлиқроқ бўлади."]
     send_text("\n".join(L))
     send_file(path, f"Текширув: {title}, {d1:%d.%m}–{d2:%d.%m.%Y}")
     print(f"::notice::check done {title} {d1}..{d2} visits={len(allv)}")
