@@ -316,6 +316,14 @@ def _delete_in(s, cid: int):
     return name, loc, "ok"
 
 
+def ask_period(tg_):
+    import check
+    t = (tg_[0], int(tg_[1:]))
+    kb = [[{"text": nm, "callback_data": f"ck:{k}:{tg_}"} for k, nm in list(check.PERIODS.items())[:2]],
+          [{"text": nm, "callback_data": f"ck:{k}:{tg_}"} for k, nm in list(check.PERIODS.items())[2:]]]
+    say(f"{esc(check.label(t))}\nҚайси давр бўйича текширамиз?", kb)
+
+
 # ---------------------------------------------------------------- dispatch
 def main():
     u = json.loads(os.environ["UPDATE"])
@@ -326,6 +334,15 @@ def main():
         return
     if u.get("cb"):
         act, _, rest = u["cb"].partition(":")
+        if act in ("ck", "cks"):             # manager check: ck:<period>:<r|p><i>  /  cks:<r|p><i> (choose period)
+            import check
+            if act == "cks":
+                return ask_period(rest)
+            code, _, tg_ = rest.partition(":")
+            t = (tg_[0], int(tg_[1:]))
+            say(f"⏳ {esc(check.label(t))} — {check.PERIODS[code].lower()} текширилмоқда. "
+                "Мерч фотолари ИИ да текширилгани учун 2–20 дақиқа кетиши мумкин, файл тайёр бўлса ўзим юбораман.")
+            return check.run(t, code)
         cid, _, sel = rest.partition(":")
         cid = int(cid)
         print(f"::notice::action={act} id={cid}")
@@ -359,7 +376,8 @@ def main():
     text = (u.get("text") or "").strip()
     if text.startswith("/start") or text.lower() in ("/help", "ёрдам", "yordam"):
         # the bot menu is for visit analytics only (removes commands another program left on this bot)
-        tg("setMyCommands", commands=[{"command": "start", "description": "Ёрдам"}])
+        tg("setMyCommands", commands=[{"command": "start", "description": "Ёрдам"},
+                                      {"command": "tekshir", "description": "Ходим ёки ҳудуд жамоасини текшириш"}])
         say("📊 <b>Визит аналитикаси боти</b>\n\n"
             "<b>Ўзи юборади:</b>\n"
             "• ҳар куни 17:30 — ТП «Факт визит и мерч» ва МП визит файллари (ой бошидан)\n"
@@ -368,7 +386,25 @@ def main():
             "• ойнинг 1-санаси 09:00 — ойлик таҳлил (шубҳали ҳолати бор ходимлар)\n"
             "• аптека локацияси ўзгарса ёки ўчирилган локация қайта қўйилса — хабар\n\n"
             "<b>Аптека локациясини ўчириш:</b> гуруҳдаги хабар скриншотини ташланг (ёки аптека номи / ID). "
-            "3 ойлик визитлар тарихини кўрсатаман, фақат сиз «Ҳа, ўчир» тугмасини боссангиз ўчираман.")
+            "3 ойлик визитлар тарихини кўрсатаман, фақат сиз «Ҳа, ўчир» тугмасини боссангиз ўчираман.\n\n"
+            "<b>Ходим / жамоани текшириш:</b> <code>/tekshir Фамилия</code> ёки <code>/tekshir Вилоят</code> — "
+            "давр (ҳафта/ой) танлайсиз, шубҳали визитлар, мерч ва аптека қамрови бўйича файл келади.")
+        return
+    low = text.lower()
+    if low.startswith(("/tekshir", "/текшир", "tekshir", "текшир")):
+        import check
+        q = text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else ""
+        if not q:
+            say("Кимни текширамиз? Ходим фамилиясини ёки ҳудудни ёзинг, масалан:\n"
+                "<code>/tekshir Азимов</code> — битта ходим\n<code>/tekshir Самарканд</code> — ҳудуд жамоаси (ТП+МП)")
+            return
+        ts = check.resolve(q)
+        if not ts:
+            say(f"«{esc(q)}» бўйича ходим ҳам, ҳудуд ҳам топилмади. Фамилияни ёки вилоят номини ёзинг.")
+        elif len(ts) == 1:
+            ask_period(f"{ts[0][0]}{ts[0][1]}")
+        else:
+            say("Қайси бири?", [[{"text": check.label(t)[:60], "callback_data": f"cks:{t[0]}{t[1]}"}] for t in ts[:10]])
         return
     shot = None
     c = companies()
