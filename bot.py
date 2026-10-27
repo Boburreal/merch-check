@@ -120,6 +120,27 @@ def header(row):
     return L, pd.notna(lat)
 
 
+def extras(row):
+    lg_lines, off_lines = [], []
+    lg = store.load('loc_log')
+    if len(lg):
+        lg = lg[lg['ID'].astype(str) == str(row.id)]
+        lg_lines = [f" • {r[1]} — {r[7]}" for r in lg.tail(6).itertuples(index=False)]
+    for grp in ('tp', 'mp'):
+        o = store.load(f'offenses_{grp}')
+        if len(o):
+            o = o[o['obj'].map(norm) == row.n]
+            off_lines += [f" • {r.date[8:10]}.{r.date[5:7]} {esc(r.who)}: {TYPES.get(r.type, r.type)}" for r in o.itertuples()]
+    return lg_lines, off_lines[-6:]
+
+
+def pack(ctx) -> str:
+    """Context for the Cloudflare Worker, hidden in the message as an invisible link (analytics without GitHub)."""
+    import base64, zlib
+    raw = zlib.compress(json.dumps(ctx, ensure_ascii=False, separators=(',', ':')).encode(), 9)
+    return base64.urlsafe_b64encode(raw).decode().rstrip('=')
+
+
 def ask_people(row, shot=None):
     """Step 1: list everyone who visited (3 months) + people attached in the base; Bobur ticks the attached ones."""
     v, d1, d2 = visits_for(row)
@@ -143,7 +164,22 @@ def ask_people(row, shot=None):
     L.append("\n👇 <b>Бу аптекага қайси ходимлар бириктирилган?</b> Белгиланг ва «Тайёр» ни босинг.")
     kb = [[{"text": f"☐ {p[0][:28]} · {p[1]} · {p[2]}", "callback_data": f"t:{i}"}] for i, p in enumerate(people)]
     kb.append([{"text": "✅ Тайёр", "callback_data": f"go:{row.id}"}, {"text": "❌ Бекор", "callback_data": f"no:{row.id}"}])
-    say("\n".join(L), kb)
+    H, has_loc = header(row)
+    pp = []
+    for emp, grp, n in people:
+        m = v[v['emp'].map(norm) == norm(emp)]
+        pp.append([emp, m.grp.iloc[0], len(m), f"{m.t.min():%d.%m}", f"{m.t.max():%d.%m.%Y}",
+                   int((pd.Timestamp(d2) - m.t.max().normalize()).days)] if len(m) else [emp, grp, 0, '', '', -1])
+    months = v['t'].dt.strftime('%m.%Y').value_counts().sort_index() if len(v) else {}
+    lg_lines, off_lines = extras(row)
+    ctx = {'id': int(row.id), 'h': H, 'loc': bool(has_loc), 'd1': f"{d1:%d.%m}", 'd2': f"{d2:%d.%m.%Y}", 'n': len(v),
+           'p': pp, 'r': [f" {r.t:%d.%m %H:%M} — {esc(r.emp)} ({r.grp})" for r in v.head(8).itertuples()],
+           'mo': ", ".join(f"{k}: {n}" for k, n in months.items()), 'lg': lg_lines, 'of': off_lines}
+    text = f'<a href="https://example.com/#c={pack(ctx)}">\u200b</a>' + "\n".join(L)
+    r = tg("sendMessage", chat_id=OWNER, text=text, parse_mode="HTML", disable_web_page_preview="true",
+           reply_markup={"inline_keyboard": kb})
+    if not r.get("ok"):                     # too long for a hidden context - plain message, GitHub does the analytics
+        say("\n".join(L), kb)
 
 
 def analytics(row, sel):
@@ -293,6 +329,12 @@ def main():
         cid, _, sel = rest.partition(":")
         cid = int(cid)
         print(f"::notice::action={act} id={cid}")
+        if act == "logdel":                 # Worker deleted the location itself - remember it for the re-set alert
+            log = store.load('loc_deleted')
+            r_ = pd.DataFrame([{'id': cid, 'name': u.get('name', ''), 'old': u.get('old', ''),
+                                'when': dt.datetime.now(TZ).strftime('%d.%m.%Y %H:%M')}])
+            store.save('loc_deleted', pd.concat([log, r_]) if len(log) else r_)
+            return
         c = companies()
         row = c[c.id == cid]
         if act == "no":
