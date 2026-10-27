@@ -22,6 +22,7 @@ jobs:
           SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
           SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
       - run: |
           git config user.name "merch-bot"; git config user.email "bot@users.noreply.github.com"
           git add drop/store && git diff --cached --quiet && exit 0

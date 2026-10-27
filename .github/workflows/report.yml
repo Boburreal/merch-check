@@ -11,10 +11,11 @@ on:
       today: {description: "qayta hisoblash uchun sana YYYY-MM-DD (bo'sh = bugun)", default: ""}
       from: {description: "range uchun YYYY-MM-DD", default: ""}
       to: {description: "range uchun YYYY-MM-DD", default: ""}
+      auto: {description: "1 = jadval bo'yicha (bir kunda bir marta yuboriladi)", default: ""}
 permissions:
   contents: write
 concurrency:
-  group: report-${{ github.event.schedule || inputs.mode }}
+  group: report
   cancel-in-progress: false
 jobs:
   report:
@@ -46,6 +47,7 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           ROSTER_KEY: ${{ secrets.ROSTER_KEY }}
           TODAY: ${{ inputs.today }}
+          AUTO: ${{ github.event_name == 'schedule' && '1' || inputs.auto }}
       - name: Save merch results (encrypted)
         if: always()
         run: |

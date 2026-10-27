@@ -26,24 +26,22 @@ def _save(cid: int):
 
 
 def chat_id() -> int:
-    """Telegram keeps /start messages only 24h, so the chat id is stored (encrypted) after the first success."""
+    """Telegram keeps /start messages only 24h, so the chat id is stored (encrypted) after the first success.
+    With the Cloudflare webhook active getUpdates is unavailable - the stored id is used."""
     global _CACHE
     if _CACHE:
         return _CACHE
     if os.environ.get("TG_CHAT_ID"):
         _CACHE = int(os.environ["TG_CHAT_ID"]); return _CACHE
-    r = requests.get(f"{API}/getUpdates", timeout=30).json()
-    if not r.get("ok"):
-        raise RuntimeError(f"getUpdates: {r}"[:200])
-    ids = [u["message"]["chat"]["id"] for u in r.get("result", []) if "message" in u]
-    if ids:
-        _CACHE = ids[-1]
-        if _saved() != _CACHE:
-            _save(_CACHE)
-        return _CACHE
     _CACHE = _saved()
-    if not _CACHE:
+    if _CACHE:
+        return _CACHE
+    r = requests.get(f"{API}/getUpdates", timeout=30).json()
+    ids = [u["message"]["chat"]["id"] for u in r.get("result", []) if "message" in u] if r.get("ok") else []
+    if not ids:
         raise SystemExit("Botga /start yuboring (chat_id topilmadi)")
+    _CACHE = ids[-1]
+    _save(_CACHE)
     return _CACHE
 
 
