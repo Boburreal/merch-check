@@ -88,6 +88,26 @@ def static_flags(c: pd.DataFrame) -> pd.DataFrame:
                          'Харита': 'https://yandex.uz/maps/?pt=' + x.lon.astype(str) + ',' + x.lat.astype(str) + '&z=18&l=map'})
 
 
+def alert_reset(ch: pd.DataFrame):
+    """A location deleted through the bot was set again -> tell Bobur right away."""
+    if not len(ch):
+        return
+    gone = store.load('loc_deleted')
+    if not len(gone):
+        return
+    back = ch[ch['Ўзгариш'].isin(['Локация қўйилди', 'Локация кўчирилди']) & ch['ID'].astype(str).isin(set(gone['id'].astype(str)))]
+    if not len(back):
+        return
+    try:
+        from telegram import send_text
+        for r in back.to_dict('records'):
+            g = gone[gone['id'].astype(str) == str(r['ID'])].iloc[-1]
+            send_text(f"📍 <b>{r['Аптека']}</b> (ID {r['ID']}) — {g['when']} да бот орқали ўчирилган локация "
+                      f"қайта қўйилди ({r['Аниқланди']} да аниқланди). Бириктирилган: {r['Бириктирилган ТП'] or '—'}")
+    except Exception as e:
+        print("::warning::alert failed " + str(e)[:150])
+
+
 def snapshot():
     """Hourly job: take a snapshot and append detected changes to the log."""
     from companies import fetch_companies
@@ -101,6 +121,7 @@ def snapshot():
     if len(ch):
         log = store.load('loc_log')
         store.save('loc_log', pd.concat([log, ch.astype(str)], ignore_index=True) if len(log) else ch)
+    alert_reset(ch)
     store.save('companies_last', cur)
     store.save('companies_meta', pd.DataFrame({'time': [now]}))
     print(f"::notice::snapshot {now}: companies={len(cur)} with_coords={cur.lat.notna().sum()} changes={len(ch)}"

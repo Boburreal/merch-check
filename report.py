@@ -28,6 +28,14 @@ ACC = ("Мерч бепул Google Gemini (Flash-Lite) ИИ билан текш�
        "сизнинг баҳойингиз билан мос келди (≈75%). Шубҳали қаторларни фото линки орқали текширинг.")
 now = dt.datetime.now(TZ)
 today = dt.date.fromisoformat(os.environ['TODAY']) if os.environ.get('TODAY') else now.date()
+# scheduled runs come from two clocks (Cloudflare Worker on time + GitHub schedule as backup): send only once
+AUTO = os.environ.get('AUTO') == '1'
+SENT_KEY = f"{MODE}:{today.isoformat()}"
+if AUTO:
+    _sent = store.load('sent')
+    if len(_sent) and SENT_KEY in set(_sent['key']):
+        print(f"::notice::{SENT_KEY} already sent - skipped")
+        raise SystemExit(0)
 
 
 def period():
@@ -204,4 +212,8 @@ send_text("\n".join(msg))
 for p, cap in files:
     translate_workbook(p)          # files are delivered in Russian
     send_file(p, cap)
+if AUTO:
+    _sent = store.load('sent')
+    _row = pd.DataFrame({'key': [SENT_KEY]})
+    store.save('sent', pd.concat([_sent, _row]).tail(400) if len(_sent) else _row)
 print("::notice::telegram=sent")
