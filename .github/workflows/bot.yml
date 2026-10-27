@@ -12,8 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: "3.12", cache: pip, cache-dependency-path: requirements-bot.txt}
-      - run: pip install -r requirements-bot.txt
+        with: {python-version: "3.12"}
+      - uses: actions/cache@v4
+        id: venv
+        with:
+          path: ${{ env.pythonLocation }}
+          key: py-${{ env.pythonLocation }}-${{ hashFiles('requirements-bot.txt') }}
+      - if: steps.venv.outputs.cache-hit != 'true'
+        run: pip install -r requirements-bot.txt
       - run: python bot.py
         env:
           UPDATE: ${{ inputs.update }}
