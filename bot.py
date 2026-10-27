@@ -67,6 +67,8 @@ def read_screenshot(file_id) -> dict:
 # ---------------------------------------------------------------- finding the pharmacy
 def companies():
     c = store.load('companies_last')
+    for k in ('name', 'region', 'district', 'reps'):
+        c[k] = c[k].fillna('').astype(str)
     c['id'] = c['id'].astype(int)
     c['n'] = c['name'].map(norm)
     return c
