@@ -196,6 +196,7 @@ def run(target, code):
         tp['vit'] = pd.to_numeric(m['vitrina'], errors='coerce').fillna(0).astype(int).values
         tp['kas'] = pd.to_numeric(m['kassa'], errors='coerce').fillna(0).astype(int).values
         tp['mcom'] = m['comment'].fillna('').values
+        tp['mraw'] = m['raw'].fillna('').values if 'raw' in m else ''
         close = tp['cat'].eq('suspicious')
         tp.loc[close, 'Шубҳали'] = True
         tp.loc[close, 'Изоҳ'] = (tp.loc[close, 'Изоҳ'] + '; Мерч фотоси яқин пландан (аптека кўринмайди)').str.strip('; ')
@@ -269,7 +270,11 @@ def run(target, code):
                     val = val.strftime('%d.%m.%Y')
                 elif hasattr(val, 'item'):
                     val = val.item()
-                ws.cell(i, j, val)
+                c = ws.cell(i, j, val)
+                if isinstance(val, str) and val.startswith('http'):         # photo links: clickable
+                    c.hyperlink = val
+                    c.value = 'Фото 1' if df.columns[j - 1] == 'Фото 1' else 'Фото 2' if df.columns[j - 1] == 'Фото 2' else 'Открыть фото'
+                    c.font = Font(color='0563C1', underline='single')
         for j, c in enumerate(df.columns, 1):
             ws.column_dimensions[get_column_letter(j)].width = (widths or {}).get(c, max(10, min(40, len(str(c)) + 2)))
         ws.freeze_panes = ws.cell(start + 1, 2)
@@ -290,7 +295,7 @@ def run(target, code):
         D = pd.DataFrame({'Дата': sv['day'], 'Время': sv['dt'].dt.strftime('%H:%M'), 'Сотрудник': sv['who'],
                           'Тип визита': sv['Тип визита'], 'Объект': sv['Контр-агент/Врач'], 'Адрес': sv.get('Адрес'),
                           'Причина': sv['Изоҳ'], 'Фото 1': sv['Фото 1'], 'Фото 2': sv['Фото 2']})
-        table(ws, D, 1, {'Сотрудник': 30, 'Объект': 34, 'Адрес': 30, 'Причина': 70, 'Фото 1': 18, 'Фото 2': 18})
+        table(ws, D, 1, {'Сотрудник': 30, 'Объект': 34, 'Адрес': 30, 'Причина': 70, 'Фото 1': 10, 'Фото 2': 10})
         for i in range(2, len(D) + 2):
             ws.cell(i, 7).alignment = Alignment(wrap_text=True, vertical='top')
 
@@ -298,10 +303,23 @@ def run(target, code):
         ws = wb.create_sheet('Мерч')
         res = tp['cat'].map({'merch': 'Мерч есть', 'none': 'Нет мерча', 'suspicious': 'Крупный план (не засчитан)',
                              'no_photo': 'Нет фото'}).fillna('Не проверено')
+        def merch_photo(r):
+            """Link to the photo on which the AI saw both products (Риномакс + Форсил)."""
+            try:
+                ph = json.loads(r['mraw']).get('photos', []) if r['mraw'] else []
+            except Exception:
+                ph = []
+            urls = [u for u in (r['Фото 1'], r['Фото 2']) if isinstance(u, str) and u.startswith('http')]
+            for i, x in enumerate(ph):
+                if x.get('rinomaks') and x.get('forsil') and i < len(urls):
+                    return urls[i]
+            return None
         M = pd.DataFrame({'Дата': tp['day'], 'Время': tp['dt'].dt.strftime('%H:%M'), 'ТП': tp['who'],
-                          'Аптека': tp['Контр-агент/Врач'], 'Результат': res, 'Витрина': tp['vit'], 'Касса': tp['kas'],
+                          'Аптека': tp['Контр-агент/Врач'], 'Результат': res,
+                          'Фото с мерчем': [merch_photo(r) for _, r in tp.iterrows()],
+                          'Витрина': tp['vit'], 'Касса': tp['kas'],
                           'Что увидел ИИ': tp['mcom'], 'Фото 1': tp['Фото 1'], 'Фото 2': tp['Фото 2']}).sort_values(['ТП', 'Дата'])
-        table(ws, M, 1, {'ТП': 30, 'Аптека': 34, 'Результат': 22, 'Что увидел ИИ': 60, 'Фото 1': 18, 'Фото 2': 18})
+        table(ws, M, 1, {'ТП': 30, 'Аптека': 34, 'Результат': 24, 'Фото с мерчем': 14, 'Что увидел ИИ': 60, 'Фото 1': 10, 'Фото 2': 10})
 
     ws = wb.create_sheet('Охват аптек')
     if len(C):
