@@ -211,10 +211,28 @@ def serialize(html):
 
 
 def delete_location(cid: int):
-    from sales import login, BASE
+    """The edit page opens only under the project the pharmacy belongs to (ТП=1 or МП=4)."""
+    from sales import login, switch_project
     s = login()
+    try:
+        for proj in (1, 4):
+            switch_project(s, proj)
+            res = _delete_in(s, cid)
+            if res is not None:
+                return res
+        return '', '', "failed (аптеканинг таҳрирлаш саҳифаси очилмади — ТП ва МП лойиҳаларида ҳам)"
+    finally:
+        switch_project(s, 1)
+
+
+def _delete_in(s, cid: int):
+    from sales import BASE
     url = f"{BASE}/lists/companies/{cid}/edit"
-    before = serialize(s.get(url, timeout=60).text)
+    page = s.get(url, timeout=60)
+    if 'class="edit_form"' not in page.text:
+        print(f"::notice::edit page status={page.status_code} url_end={page.url[-30:]}")
+        return None
+    before = serialize(page.text)
     loc = dict(before).get('location', '')
     name = dict(before).get('name', '')
     if not loc.strip():
