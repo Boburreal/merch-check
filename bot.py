@@ -308,5 +308,7 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
+        import traceback
+        print("::error::" + traceback.format_exc()[-900:].replace(chr(10), " | "))
         say(f"❗️ Хатолик: {esc(str(e)[:300])}")
         raise
