@@ -1,0 +1,35 @@
+name: Worker self-test (Sales form, nothing changed)
+on:
+  workflow_dispatch:
+    inputs:
+      id: {description: "apteka ID", default: "10"}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "20"}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install requests beautifulsoup4 lxml pandas cryptography
+      - name: Start worker locally (workerd)
+        env:
+          SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
+          SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+        run: |
+          cd worker
+          printf 'SALES_LOGIN=%s\nSALES_PASSWORD=%s\nTG_BOT_TOKEN=%s\nGH_TOKEN=x\n' "$SALES_LOGIN" "$SALES_PASSWORD" "$TG_BOT_TOKEN" > .dev.vars
+          printf 'name = "t"\nmain = "worker.js"\ncompatibility_date = "2025-06-01"\n' > wrangler.toml
+          (npx --yes wrangler@3 dev --port 8787 > /tmp/w.log 2>&1 &)
+          for i in $(seq 1 60); do curl -s localhost:8787/ >/dev/null && break; sleep 2; done
+          curl -s localhost:8787/ ; echo
+      - run: python worker/selftest.py "${{ inputs.id }}"
+        env:
+          SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
+          SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+      - if: failure()
+        run: grep -iE "error|exception" /tmp/w.log | head -20 | sed 's/^/::warning::/' || true
