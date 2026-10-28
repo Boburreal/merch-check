@@ -12,7 +12,7 @@ on:
       from: {description: "range uchun YYYY-MM-DD", default: ""}
       to: {description: "range uchun YYYY-MM-DD", default: ""}
       auto: {description: "1 = jadval bo'yicha (bir kunda bir marta yuboriladi)", default: ""}
-      merch_minutes: {description: "мерч текшириш учун вақт (дақиқа)", default: "80"}
+      merch_minutes: {description: "ҳисоботдан кейин олдинги кунлар мерчини текшириш (дақиқа)", default: "60"}
       only_tp: {description: "1 = фақат ТП файли", default: ""}
 permissions:
   contents: write
@@ -49,7 +49,8 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           ROSTER_KEY: ${{ secrets.ROSTER_KEY }}
           TODAY: ${{ inputs.today }}
-          MERCH_MINUTES: ${{ inputs.merch_minutes || '80' }}
+          MERCH_MINUTES: '25'
+          BACKLOG_MINUTES: ${{ inputs.merch_minutes || '60' }}
           ONLY_TP: ${{ inputs.only_tp }}
           AUTO: ${{ github.event_name == 'schedule' && '1' || inputs.auto }}
       - name: Save merch results (encrypted)

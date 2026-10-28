@@ -23,7 +23,7 @@ from telegram import send_text, send_file
 
 TZ = ZoneInfo("Asia/Tashkent")
 MODE = os.environ.get("MODE", "daily")
-MERCH_MIN = int(os.environ.get("MERCH_MINUTES", "80"))
+MERCH_MIN = int(os.environ.get("MERCH_MINUTES", "25"))   # today's visits before the report is sent
 ACC = ("Мерч бепул Google Gemini (Flash-Lite) ИИ билан текширилади. Синовда 30 визитдан 22–23 тасида "
        "сизнинг баҳойингиз билан мос келди (≈75%). Шубҳали қаторларни фото линки орқали текширинг.")
 now = dt.datetime.now(TZ)
@@ -167,14 +167,6 @@ print(f"::notice::{MODE} {f1}..{d2} tp={len(tp)} mp={len(mp)}")
 
 if MODE in ("daily", "update"):
     merch_for_day(d2, tp)
-    # backlog: earlier days of the month whose visits were not checked yet (e.g. the free AI limit ran out)
-    for back in sorted({x.date() for x in tp.day} - {d2}, reverse=True):
-        if time.time() - START > MERCH_MIN * 60:
-            break
-        try:
-            merch_for_day(back, tp)
-        except Exception as e:
-            print("::warning::backlog " + str(e)[:150]); break
 merch = stored_merch(f1, d2)
 m = tp[['id']].merge(merch, on='id', how='left') if len(merch) else tp[['id']].assign(category=None)
 tp['f_closeup'] = m['category'].eq('suspicious').values
@@ -250,6 +242,17 @@ if AUTO:
     _row = pd.DataFrame({'key': [SENT_KEY]})
     store.save('sent', pd.concat([_sent, _row]).tail(400) if len(_sent) else _row)
 print("::notice::telegram=sent")
+if MODE in ("daily", "update") and not os.environ.get('NO_BACKLOG'):
+    # after the report is delivered: earlier days of the month not checked yet (free AI limit permitting)
+    BACK_MIN = int(os.environ.get("BACKLOG_MINUTES", "60"))
+    START = time.time(); MERCH_MIN = BACK_MIN
+    for back in sorted({x.date() for x in tp.day} - {d2}, reverse=True):
+        if time.time() - START > MERCH_MIN * 60:
+            break
+        try:
+            merch_for_day(back, tp)
+        except Exception as e:
+            print("::warning::backlog " + str(e)[:150]); break
 if MODE == "update":                    # Аудиозаписи file: yesterday's block (6 ТП x 2 recordings)
     try:
         import az
