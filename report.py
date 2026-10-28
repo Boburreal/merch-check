@@ -238,3 +238,9 @@ if AUTO:
     _row = pd.DataFrame({'key': [SENT_KEY]})
     store.save('sent', pd.concat([_sent, _row]).tail(400) if len(_sent) else _row)
 print("::notice::telegram=sent")
+if MODE == "update":                    # Аудиозаписи file: yesterday's block (6 ТП x 2 recordings)
+    try:
+        import az
+        az.run([d2])
+    except Exception as e:
+        print("::warning::az " + str(e)[:200])

@@ -1,0 +1,33 @@
+name: Аудиозаписи (qo'lda)
+on:
+  workflow_dispatch:
+    inputs:
+      from: {description: "YYYY-MM-DD", default: ""}
+      to: {description: "YYYY-MM-DD", default: ""}
+permissions:
+  contents: write
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements-bot.txt
+      - run: python az.py
+        env:
+          AZ_FROM: ${{ inputs.from }}
+          AZ_TO: ${{ inputs.to }}
+          SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
+          SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          ROSTER_KEY: ${{ secrets.ROSTER_KEY }}
+      - if: always()
+        run: |
+          git config user.name "merch-bot"; git config user.email "bot@users.noreply.github.com"
+          git add drop/store 2>/dev/null || exit 0
+          git diff --cached --quiet && exit 0
+          git commit -qm "az store"
+          for i in 1 2 3; do git pull --rebase -X ours -q && git push -q && break; sleep 7; done
