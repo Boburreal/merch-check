@@ -64,14 +64,19 @@ def rows_per_day(tp: pd.DataFrame, merch: pd.DataFrame, seed: pd.DataFrame, plan
     for (day, name), g in tp.groupby(['day', 'ТП'], sort=True):
         k = R.key(name)
         ds = day.strftime('%Y-%m-%d')
-        checked = g['cat'].isin(['merch', 'none', 'suspicious']).sum()
+        checked = int(g['cat'].isin(['merch', 'none', 'suspicious']).sum())
         vit, kas, src = int(g.v.sum()), int(g.k.sum()), 'ИИ'
-        if checked == 0 and (ds, k) in seed_map:
+        extra = ''
+        if checked < len(g) and (ds, k) in seed_map:
+            # not every visit of the day was checked by AI -> Bobur's manual numbers, AI partial result shown in the comment
+            if checked:
+                extra = f"ИИ {checked}/{len(g)} визитни текширди: Витрина {vit}, Касса {kas}"
             vit, kas = [int(x) if pd.notna(x) else 0 for x in seed_map[(ds, k)]]
             src = 'қўлда'
+        com = day_comment(g, len(g) - checked if src == 'ИИ' else 0)
         out.append({'day': day, 'ТП': name, 'Должность': 'ТП', 'Регион': g['Иш ҳудуди'].iloc[0],
                     'План': plans.get(k, R.DEFAULT_PLAN), 'Факт': len(g), 'Витрина': vit, 'Касса': kas,
-                    'src': src, 'Комментария': day_comment(g, len(g) - checked if src == 'ИИ' else 0)})
+                    'src': src, 'Комментария': '; '.join(x for x in (com, extra) if x)})
     return pd.DataFrame(out), tp
 
 
@@ -179,7 +184,7 @@ def build(path, month_title, tp, merch, seed, people, loc_changes):
         if cat:
             mtxt = CAT.get(cat, 'Текширилмади')
         elif x['day'] < AI_START:
-            mtxt = 'қўлда (ИИ дан олдин)'   # merch numbers for these days come from Bobur's own file
+            mtxt = 'ИИ текширмаган (кун мерчи қўлда)'   # this day's merch numbers come from Bobur's own file
         else:
             mtxt = 'Ҳали текширилмади (кейинги ишга туширишда)'
         vals = [x['id'], x['Дата'], x['Время завершения визита'], x['ТП'], x['Иш ҳудуди'], x['Контр-агент/Врач'], mtxt,

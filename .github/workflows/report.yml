@@ -12,6 +12,8 @@ on:
       from: {description: "range uchun YYYY-MM-DD", default: ""}
       to: {description: "range uchun YYYY-MM-DD", default: ""}
       auto: {description: "1 = jadval bo'yicha (bir kunda bir marta yuboriladi)", default: ""}
+      merch_minutes: {description: "мерч текшириш учун вақт (дақиқа)", default: "80"}
+      only_tp: {description: "1 = фақат ТП файли", default: ""}
 permissions:
   contents: write
 concurrency:
@@ -20,7 +22,7 @@ concurrency:
 jobs:
   report:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 340
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -47,6 +49,8 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           ROSTER_KEY: ${{ secrets.ROSTER_KEY }}
           TODAY: ${{ inputs.today }}
+          MERCH_MINUTES: ${{ inputs.merch_minutes || '80' }}
+          ONLY_TP: ${{ inputs.only_tp }}
           AUTO: ${{ github.event_name == 'schedule' && '1' || inputs.auto }}
       - name: Save merch results (encrypted)
         if: always()

@@ -55,6 +55,14 @@ def period():
     return d1, d2, f"Ҳисобот — {d1:%d.%m.%Y}–{d2:%d.%m.%Y}"
 
 
+def alive_models():
+    """Up to 4 free Gemini models that still have quota today (raises DailyQuotaExceeded if none)."""
+    import merch as M
+    first = pick_model()
+    rest = [m for m in M._CHAIN if m not in M._DEAD and m != first]
+    return [first] + rest[:3]
+
+
 def merch_for_day(day: dt.date, tp: pd.DataFrame) -> pd.DataFrame:
     """Load stored results for the day and check visits that are not checked yet."""
     name = f"m_{day.isoformat()}"
@@ -66,18 +74,20 @@ def merch_for_day(day: dt.date, tp: pd.DataFrame) -> pd.DataFrame:
     todo = tp[(tp.day.dt.date == day) & ~tp.id.isin(done) & tp['Лавозим'].str.contains('Торг')]
     rows, t0 = [], time.time()
     try:
-        model = pick_model() if len(todo) else None
+        models = alive_models() if len(todo) else []
     except DailyQuotaExceeded:
         print(f"::warning::merch {day}: free AI limit used up today, {len(todo)} visits left for the next run")
         todo = todo[:0]
     if len(todo):
         stop = False
+        nthreads = min(12, 3 * max(1, len(models)))       # each free model has its own per-minute limit
 
-        def work(r):
+        def work(arg):
+            i, r = arg
             if stop or time.time() - START > MERCH_MIN * 60:
                 return None
             try:
-                res = check_visit(model, r['Фото 1'], r['Фото 2'])
+                res = check_visit(models[i % len(models)], r['Фото 1'], r['Фото 2'])
             except DailyQuotaExceeded:
                 return 'QUOTA'
             except Exception as e:
@@ -85,8 +95,8 @@ def merch_for_day(day: dt.date, tp: pd.DataFrame) -> pd.DataFrame:
             return {"id": r['id'], "category": res['category'], "vitrina": res['vitrina'], "kassa": res['kassa'],
                     "comment": comment(res.get('raw')), "raw": json.dumps(res.get('raw'), ensure_ascii=False)}
 
-        with ThreadPoolExecutor(3) as ex:
-            futs = [ex.submit(work, r) for _, r in todo.iterrows()]
+        with ThreadPoolExecutor(nthreads) as ex:
+            futs = [ex.submit(work, (i, r)) for i, (_, r) in enumerate(todo.iterrows())]
             for f in as_completed(futs):
                 x = f.result()
                 if x == 'QUOTA':
@@ -230,6 +240,8 @@ else:
     msg += ["", "Шубҳали улуши энг юқори ТП:"] + [f"• {k}: {v * 100:.0f}%" for k, v in top.items() if v > 0]
 
 send_text("\n".join(msg))
+if os.environ.get('ONLY_TP'):
+    files = files[:1]
 for p, cap in files:
     translate_workbook(p)          # files are delivered in Russian
     send_file(p, cap)
