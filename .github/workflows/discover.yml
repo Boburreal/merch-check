@@ -1,5 +1,7 @@
 name: Discover Sales pages
 on: workflow_dispatch
+permissions:
+  contents: write
 jobs:
   d:
     runs-on: ubuntu-latest
@@ -14,3 +16,8 @@ jobs:
           SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ROSTER_KEY: ${{ secrets.ROSTER_KEY }}
+      - run: |
+          git config user.name "merch-bot"; git config user.email "bot@users.noreply.github.com"
+          git add drop/store && git diff --cached --quiet && exit 0
+          git commit -qm "store fix"
+          for i in 1 2 3; do git pull --rebase -X ours -q && git push -q && break; sleep 7; done
