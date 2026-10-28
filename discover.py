@@ -1,20 +1,10 @@
-import re
-from sales import login, switch_project, BASE
-s = login(); switch_project(s, 1)
-t = s.get(BASE + "/lists/visits/213625", timeout=90).text
-p = t.find('Результаты визита')
-a = t.rfind('<a', 0, p)
-print("::notice::TAB " + re.sub(r'\s+', ' ', t[a:p])[:500])
-href = re.search(r'href="([^"]+)"', t[a:p])
-if href:
-    u = href.group(1)
-    r = s.get(u if u.startswith('http') else BASE + u, timeout=90)
-    b = r.text
-    b2 = re.sub(r'<script.*?</script>', ' ', b, flags=re.S)
-    i = b2.find('Результаты визита')
-    txt = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' | ', b2[i:]))
-    txt = re.sub(r'(\| )+', '| ', txt)
-    print(f"::notice::RES status={r.status_code} url_end={r.url[-50:]} TEXT " + txt[:2500])
-    med = re.findall(r'(?:src|href)="([^"]*(?:storage|upload)[^"]*)"', b2)
-    print("::notice::MEDIA " + " | ".join(m.split('?')[0].split('/')[-3] + '/' + m.split('?')[0].split('.')[-1] for m in med)[:1200])
-    print("::notice::TAGS " + str(sorted(set(re.findall(r'<(audio|video|source)\b', b2)))))
+import datetime as dt, pandas as pd, vcache, az
+v = vcache.get('tp', dt.date(2026,10,20), dt.date(2026,10,27))
+v = v.assign(day=pd.to_datetime(v['Дата'], format='%d.%m.%Y'))
+v['who'] = v['Фарм. пред'].str.replace(r'\s*\([^()]*\)\s*$', '', regex=True).str.strip()
+v['reg'] = v['who'].map(az.short_region)
+for d, g in v.groupby(v.day.dt.date):
+    ph = g[g['Тип визита'].fillna('').str.contains('аптек|контрагент', case=False)]
+    t = ph[ph['Фарм. пред'].str.contains('Торг', na=False)]
+    c = t[t.reg.notna()].groupby('who').size()
+    print(f"::notice::{d} all={len(g)} pharm={len(ph)} tp={len(t)} tp_regions={t.reg.notna().sum()} people>=2={int((c>=2).sum())} types={g['Тип визита'].value_counts().to_dict()}")
