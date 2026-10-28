@@ -118,6 +118,10 @@ def snapshot():
     meta = store.load('companies_meta')
     t_prev = meta['time'].iloc[0] if len(meta) else ''
     ch = diff(prev, cur, t_prev, now)
+    if len(ch) > 800:
+        # a real day never changes this many pharmacies: one of the lists was read under the wrong project
+        print(f"::warning::snapshot {now}: {len(ch)} changes look like a glitch - not logged, previous snapshot kept")
+        return
     if len(ch):
         log = store.load('loc_log')
         store.save('loc_log', pd.concat([log, ch.astype(str)], ignore_index=True) if len(log) else ch)
@@ -128,5 +132,23 @@ def snapshot():
           + (f" kinds={ch['Ўзгариш'].value_counts().to_dict()}" if len(ch) else ""))
 
 
+def repair(stamps):
+    """Drop log entries of glitched snapshots and take a clean base snapshot without logging."""
+    from companies import fetch_companies
+    log = store.load('loc_log')
+    if len(log):
+        bad = log['Аниқланди'].isin(stamps)
+        store.save('loc_log', log[~bad])
+        print(f"::notice::loc_log: removed {int(bad.sum())} glitch rows, kept {int((~bad).sum())}")
+    cur = clean(pd.concat([fetch_companies(1), fetch_companies(4)], ignore_index=True)).drop_duplicates('id')
+    store.save('companies_last', cur)
+    store.save('companies_meta', pd.DataFrame({'time': [dt.datetime.now(TZ).strftime('%d.%m.%Y %H:%M')]}))
+    print(f"::notice::base snapshot reset: companies={len(cur)}")
+
+
 if __name__ == "__main__":
-    snapshot()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "repair":
+        repair(sys.argv[2:])
+    else:
+        snapshot()

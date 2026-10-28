@@ -33,13 +33,22 @@ def _export(s, d1: str, d2: str) -> bytes:
 
 
 def fetch(project: int, d1: dt.date, d2: dt.date) -> pd.DataFrame:
-    s = login()
-    switch_project(s, project)          # project choice is stored on the account - always set it explicitly
-    try:
-        return _fetch(s, d1, d2)
-    finally:
-        if project != 1:
-            switch_project(s, 1)        # leave the account on "Торговые представители" as the user had it
+    """The project is stored on the account; another job may switch it meanwhile -> verify after the export, retry."""
+    import time
+    from sales import current_project
+    for attempt in range(4):
+        s = login()
+        switch_project(s, project)
+        try:
+            df = _fetch(s, d1, d2)
+            if current_project(s) == str(project):
+                return df
+            print(f"::warning::project changed during export (attempt {attempt + 1}), retrying")
+        finally:
+            if project != 1:
+                switch_project(s, 1)
+        time.sleep(15 + 15 * attempt)
+    raise RuntimeError("export: project kept changing")
 
 
 def _fetch(s, d1, d2):

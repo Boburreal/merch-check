@@ -32,3 +32,14 @@ def switch_project(s: requests.Session, project_id: int):
             x.raise_for_status()
             return
     raise SystemExit("project-select not found")
+
+
+def current_project(s) -> str:
+    """Project the account is on right now (other jobs may switch it at the same time)."""
+    import html, json
+    r = s.get(f"{BASE}/visits/reports", timeout=120)
+    for sn in re.findall(r'wire:snapshot="([^"]+)"', r.text):
+        d = json.loads(html.unescape(sn))
+        if d.get("memo", {}).get("name") == "project-select":
+            return str(d.get("data", {}).get("currentProjectId"))
+    return ""
