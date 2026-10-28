@@ -58,6 +58,7 @@ def ref_parts():
 
 _CHAIN = []          # all usable free models, best first; a model whose daily quota is used up is skipped
 _DEAD = set()
+_SLOW = {}
 
 
 def _models():
@@ -68,8 +69,19 @@ def _models():
     flash = [n for n in names if "flash" in n and not any(x in n for x in ("image", "tts", "live", "audio", "exp", "preview", "thinking"))]
     lite = sorted([n for n in flash if "lite" in n], reverse=True)
     full = sorted([n for n in flash if "lite" not in n], reverse=True)
-    # each model has its own free daily quota: flash-lite first (tested ~75%), then flash models
-    return lite + full
+    # each model has its own free daily quota: flash-lite first (tested ~75%), then flash models.
+    # Probe once: skip models that are overloaded (503) or retired right now, so no thread waits on them.
+    ok = []
+    for m in lite + full:
+        try:
+            x = requests.post(f"{API}/models/{m}:generateContent", headers={"x-goog-api-key": GEMINI_KEY}, timeout=60,
+                              json={"contents": [{"parts": [{"text": "OK"}]}], "generationConfig": {"maxOutputTokens": 2}})
+            if x.status_code == 200:
+                ok.append(m)
+        except requests.RequestException:
+            pass
+    print(f"::notice::gemini models available: {ok}")
+    return ok
 
 
 def pick_model():
@@ -137,6 +149,9 @@ def _ask(model: str, photos: list[bytes]) -> dict:
             STATS["r429"] += 1
             if STATS["r429"] <= 2:
                 print("::warning::429 " + r.text[:300].replace(chr(10), " "))
+        if r.status_code in (500, 503) and attempt >= 2:   # model overloaded for a while -> use another one
+            _SLOW[model] = _SLOW.get(model, 0) + 1
+            raise DailyQuotaExceeded(f"{model}: overloaded (HTTP {r.status_code})")
         if r.status_code in (429, 500, 503):
             STATS["wait_s"] += wait
             if attempt == 5:
