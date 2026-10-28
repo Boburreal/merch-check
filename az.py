@@ -122,6 +122,30 @@ def listen(s, rows):
     return rows
 
 
+def refill(ws) -> int:
+    """Rows left as 'Текширилмади (ИИ лимити)' are listened to again."""
+    from sales import login, switch_project
+    todo = []
+    for row in ws.iter_rows(min_row=1):
+        g, h = row[6].value, row[7].value
+        if isinstance(g, str) and g.startswith('Текширилмади') and isinstance(h, str):
+            m = re.search(r'/visits/(\d+)/', h)
+            if m:
+                todo.append((row, {'id': int(m.group(1))}))
+    if not todo:
+        return 0
+    s = login(); switch_project(s, 1)
+    listen(s, [r for _, r in todo])
+    n = 0
+    for row, r in todo:
+        if r['comment'] and not r['comment'].startswith('Текширилмади'):
+            row[6].value = r['comment']; n += 1
+            if r.get('dur'):
+                sec = int(round(r['dur'])); row[5].value = dt.time(min(sec // 60, 23), sec % 60)
+    print(f"::notice::az refill {n}/{len(todo)}")
+    return n
+
+
 def write_block(ws, day: dt.date, rows):
     """Insert a day block at the top, copying the styles of the existing header/data rows."""
     hdr = [copy.copy(ws.cell(1, j)._style) for j in range(1, 9)]
@@ -158,9 +182,10 @@ def run(days, send=True):
     if wb is None:
         print("::warning::az: base file not uploaded yet"); return
     ws = wb.active
+    refilled = refill(ws)
     have = {b[0] for b in blocks(ws)}
     days = [d for d in sorted(days) if f"{d:%d.%m}" not in have]
-    if not days:
+    if not days and not refilled:
         print("::notice::az: nothing new"); return
     v = vcache.get('tp', min(days).replace(day=1), max(days))
     v = v[v['Тип визита'].fillna('').str.contains('аптек|контрагент', case=False)]
@@ -186,12 +211,14 @@ def run(days, send=True):
         added.append((d, rows))
         print(f"::notice::az {d}: {len(rows) // PER_TP} ТП, {len(rows)} rows")
     save_file(wb)
-    if send and added:
+    if send and (added or refilled):
         from telegram import send_text, send_file
-        last = max(d for d, _ in added)
+        last = max([d for d, _ in added] or [dt.datetime.now(TZ).date()])
         path = f"/tmp/Аудиозаписи ({MON[last.month]}-{last:%y}).xlsx"
         wb.save(path)
-        lines = [f"🎧 <b>Аудиозаписи</b> — қўшилди: " + ", ".join(f"{d:%d.%m}" for d, _ in added)]
+        lines = [f"🎧 <b>Аудиозаписи</b>" + (" — қўшилди: " + ", ".join(f"{d:%d.%m}" for d, _ in added) if added else "")]
+        if refilled:
+            lines.append(f"• олдин ИИ лимити туфайли текширилмай қолган {refilled} та ёзув тингланди")
         for d, rows in added:
             bad = sum(1 for r in rows if r['comment'].startswith(('Маълумот йўқ', 'Запись йўқ')))
             lines.append(f"• {d:%d.%m}: {len(rows) // PER_TP} ТП, {len(rows)} ёзув, «Маълумот йўқ / ёзув йўқ»: {bad}")
