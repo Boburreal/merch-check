@@ -19,7 +19,7 @@ Listen and return ONLY JSON:
  "products": [our product names actually mentioned],
  "merch_talk": true/false (asking to place / check boxes on shelf or cash desk),
  "talk_seconds": estimated seconds of speech,
- "summary": one short sentence in Uzbek (Cyrillic) about what happened in the recording}"""
+ "summary": one short sentence in Russian about what happened in the recording}"""
 
 
 def audio_url(s, vid: int):
@@ -80,26 +80,26 @@ MIME = {"aac": "audio/aac", "m4a": "audio/mp4", "mp3": "audio/mp3", "ogg": "audi
 
 
 def verdict(m: dict, a: dict | None) -> tuple[str, str]:
-    """(short status, comment in Uzbek). Thresholds are conservative - 'Шубҳали' means 'listen to it', not 'fraud'."""
+    """(status, reason) in Russian for the Excel file. 'Подозрительная' means 'listen to it', not 'fraud'."""
     if m is None:
-        return "Ёзув йўқ", "Визитда аудиоёзув йўқ"
+        return "Нет записи", "У визита нет аудиозаписи"
     notes = []
     if m["dur"] < 30:
-        notes.append(f"жуда қисқа ({m['dur']:.0f} сония)")
+        notes.append(f"очень короткая ({m['dur']:.0f} сек)")
     if m["silence_pct"] >= 85:
-        notes.append(f"ёзувнинг {m['silence_pct']}% жимлик")
+        notes.append(f"{m['silence_pct']}% записи — тишина")
     if m["max_db"] is not None and m["max_db"] < -30:
-        notes.append("овоз деярли йўқ (жуда паст)")
+        notes.append("звука почти нет (очень тихо)")
     if a:
         if not a.get("speech"):
-            notes.append("ИИ: нутқ эшитилмади")
+            notes.append("ИИ: речи не слышно")
         elif not a.get("dialog"):
-            notes.append("ИИ: суҳбат йўқ, фақат битта одам гапиради" if a.get("speakers", 0) == 1 else "ИИ: суҳбат аниқланмади")
+            notes.append("ИИ: разговора нет, говорит один человек" if a.get("speakers", 0) == 1 else "ИИ: диалог не распознан")
         elif not a.get("pharmacy_talk"):
-            notes.append("ИИ: суҳбат аптека/дори ҳақида эмас")
+            notes.append("ИИ: разговор не об аптеке/лекарствах")
     if notes:
-        return "Шубҳали", "; ".join(notes)
-    return "Нормал", ""
+        return "Подозрительная", "; ".join(notes)
+    return "Норма", ""
 
 
 def check(s, vid: int, use_ai: bool = False) -> dict:
@@ -121,8 +121,8 @@ def check(s, vid: int, use_ai: bool = False) -> dict:
     st, com = verdict(m, a)
     ai_txt = ""
     if a:
-        ai_txt = (f"{a.get('summary', '')} (овозлар: {a.get('speakers')}, нутқ ~{a.get('talk_seconds')} с"
-                  + (f", препаратлар: {', '.join(a.get('products') or [])}" if a.get('products') else "")
-                  + (", мерч ҳақида гапирилди" if a.get('merch_talk') else "") + ")")
+        ai_txt = (f"{a.get('summary', '')} (голосов: {a.get('speakers')}, речь ~{a.get('talk_seconds')} сек"
+                  + (f", препараты: {', '.join(a.get('products') or [])}" if a.get('products') else "")
+                  + (", говорили о мерче" if a.get('merch_talk') else "") + ")")
     return {"id": vid, "url": url, "dur": m["dur"], "silence_pct": m["silence_pct"], "status": st, "comment": com, "ai": ai_txt,
             "products": ", ".join(a.get("products") or []) if a else ""}
