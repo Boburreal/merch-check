@@ -187,10 +187,11 @@ def run(days, send=True):
     days = [d for d in sorted(days) if f"{d:%d.%m}" not in have]
     if not days and not refilled:
         print("::notice::az: nothing new"); return
-    v = vcache.get('tp', min(days).replace(day=1), max(days))
-    v = v[v['Тип визита'].fillna('').str.contains('аптек|контрагент', case=False)]
-    v = v.assign(day=pd.to_datetime(v['Дата'], format='%d.%m.%Y'))
-    s = login(); switch_project(s, 1)
+    if days:
+        v = vcache.get('tp', min(days).replace(day=1), max(days))
+        v = v[v['Тип визита'].fillna('').str.contains('аптек|контрагент', case=False)]
+        v = v.assign(day=pd.to_datetime(v['Дата'], format='%d.%m.%Y'))
+        s = login(); switch_project(s, 1)
     added = []
     for d in days:
         checked, last_seen = set(), {}
