@@ -1,0 +1,28 @@
+name: Location log repair
+on:
+  workflow_dispatch:
+    inputs:
+      stamps: {description: "glitch snapshot times, e.g. '28.10.2026 12:18'", required: true}
+permissions:
+  contents: write
+concurrency:
+  group: snapshot
+  cancel-in-progress: false
+jobs:
+  r:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install requests pandas cryptography
+      - run: python locations.py repair "${{ inputs.stamps }}"
+        env:
+          SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
+          SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - run: |
+          git config user.name "merch-bot"; git config user.email "bot@users.noreply.github.com"
+          git add drop/store && git diff --cached --quiet && exit 0
+          git commit -qm "location log repair"
+          for i in 1 2 3; do git pull --rebase -X ours -q && git push -q && break; sleep 7; done

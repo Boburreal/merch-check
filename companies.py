@@ -13,7 +13,24 @@ def _clean(v):
     return re.sub(r'\s+', ' ', v).strip()
 
 
+class ProjectChanged(Exception):
+    pass
+
+
 def fetch_companies(project: int = 1) -> pd.DataFrame:
+    """The project is stored on the account and another job may switch it meanwhile: verify and retry."""
+    import time
+    for attempt in range(4):
+        try:
+            return _fetch_companies(project)
+        except ProjectChanged:
+            print(f"::warning::project changed during companies fetch (attempt {attempt + 1}), retrying")
+            time.sleep(15 + 15 * attempt)
+    raise RuntimeError("companies: project kept changing")
+
+
+def _fetch_companies(project: int = 1) -> pd.DataFrame:
+    from sales import current_project
     s = login()
     switch_project(s, project)
     try:
@@ -38,6 +55,8 @@ def fetch_companies(project: int = 1) -> pd.DataFrame:
                 break
             rows += batch
             start += len(batch)
+        if current_project(s) != str(project):
+            raise ProjectChanged()
         if rows and isinstance(rows[0], dict):
             df = pd.DataFrame(rows)
         else:
