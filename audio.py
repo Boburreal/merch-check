@@ -57,9 +57,9 @@ def measure(path: str) -> dict:
             "mean_db": float(mean.group(1)) if mean else None, "max_db": float(peak.group(1)) if peak else None}
 
 
-def ask_ai(model: str, data: bytes, mime: str) -> dict:
+def ask_ai(model: str, data: bytes, mime: str, prompt: str = None) -> dict:
     import base64
-    body = {"contents": [{"parts": [{"text": PROMPT}, {"inline_data": {"mime_type": mime, "data": base64.b64encode(data).decode()}}]}],
+    body = {"contents": [{"parts": [{"text": prompt or PROMPT}, {"inline_data": {"mime_type": mime, "data": base64.b64encode(data).decode()}}]}],
             "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}}
     wait = 20
     for attempt in range(5):
@@ -76,12 +76,12 @@ def ask_ai(model: str, data: bytes, mime: str) -> dict:
     raise RuntimeError("Gemini audio: too many retries")
 
 
-def ai(data: bytes, mime: str) -> dict:
+def ai(data: bytes, mime: str, prompt: str = None) -> dict:
     """Same model rotation as the merch check (next free model when one's daily limit ends)."""
     model = merch.pick_model()
     while True:
         try:
-            return ask_ai(model, data, mime)
+            return ask_ai(model, data, mime, prompt)
         except merch.DailyQuotaExceeded:
             merch._DEAD.add(model)
             model = merch.pick_model()

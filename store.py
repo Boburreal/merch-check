@@ -29,3 +29,13 @@ def load_many(prefix: str) -> pd.DataFrame:
     parts = [load(f[:-4]) for f in sorted(os.listdir(DIR)) if f.startswith(prefix) and f.endswith(".fer")]
     parts = [p for p in parts if len(p)]
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+
+
+def save_bytes(name: str, data: bytes):
+    os.makedirs(DIR, exist_ok=True)
+    open(f"{DIR}/{name}.fer", "wb").write(_f().encrypt(data))
+
+
+def load_bytes(name: str):
+    p = f"{DIR}/{name}.fer"
+    return _f().decrypt(open(p, "rb").read()) if os.path.exists(p) else None
