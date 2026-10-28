@@ -159,6 +159,68 @@ def coverage(emp_key, visits, comp, hist=None):
     return pd.DataFrame(rows, columns=['id', 'name', 'district', 'att', 'k', 'last', 'h'])
 
 
+# ---------------------------------------------------------------- audio recordings
+AUDIO_CAP = 700         # recordings measured per request at most (free ffmpeg check)
+AUDIO_AI_PER = 3        # recordings per employee also listened to by the AI (uses the free Gemini limit)
+AUDIO_MIN = 20
+
+
+def audio_for(allv: pd.DataFrame):
+    """Check the recordings of pharmacy visits; results stored per day (a_YYYY-MM-DD) and reused."""
+    import random
+    import audio
+    from sales import login, switch_project
+    ph = allv[allv['Тип визита'].fillna('').str.contains('аптек', case=False) | allv['Тип визита'].fillna('').str.contains('контрагент', case=False)]
+    days = sorted({d.date() for d in ph['day']})
+    stored = {d: store.load(f"a_{d.isoformat()}") for d in days}
+    have = {}
+    for d, a in stored.items():
+        for r in a.to_dict('records'):
+            have[int(r['id'])] = r
+    # AI sample: a few random recordings per employee that the AI has not heard yet
+    rnd = random.Random(42)
+    ai_ids = set()
+    for who, g in ph.groupby('who'):
+        heard = [i for i in g['id'] if have.get(int(i), {}).get('ai')]
+        need = max(0, AUDIO_AI_PER - len(heard))
+        cand = [int(i) for i in g['id'] if not have.get(int(i), {}).get('ai')]
+        ai_ids |= set(rnd.sample(cand, min(need, len(cand))))
+    todo = ph[~ph['id'].astype(int).isin(set(have)) | ph['id'].astype(int).isin(ai_ids)].head(AUDIO_CAP)
+    new, t0 = {}, time.time()
+    for grp, proj in (('ТП', 1), ('МП', 4)):
+        part = todo[todo['grp'] == grp] if 'grp' in todo else todo.iloc[0:0]
+        if not len(part):
+            continue
+        s = login(); switch_project(s, proj)
+        try:
+            def work(r):
+                if time.time() - t0 > AUDIO_MIN * 60:
+                    return None
+                try:
+                    x = audio.check(s, int(r['id']), use_ai=int(r['id']) in ai_ids)
+                except Exception as e:
+                    print("::warning::audio " + str(e)[:120]); return None
+                return r['day'].date(), x
+            with ThreadPoolExecutor(4) as ex:
+                for f in as_completed([ex.submit(work, r) for _, r in part.iterrows()]):
+                    x = f.result()
+                    if x:
+                        new.setdefault(x[0], []).append(x[1])
+        finally:
+            switch_project(s, 1)
+    for d, rows in new.items():
+        old = stored.get(d, pd.DataFrame())
+        allr = pd.concat([old, pd.DataFrame(rows)], ignore_index=True) if len(old) else pd.DataFrame(rows)
+        allr['id'] = allr['id'].astype(int)
+        allr = allr.drop_duplicates('id', keep='last')
+        store.save(f"a_{d.isoformat()}", allr)
+        for r in allr.to_dict('records'):
+            have[int(r['id'])] = r
+    print(f"::notice::audio todo={len(todo)} done_now={sum(len(v) for v in new.values())} ai={len(ai_ids)}")
+    rows = [have[int(i)] for i in ph['id'] if int(i) in have]
+    return pd.DataFrame(rows, columns=['id', 'url', 'dur', 'silence_pct', 'status', 'comment', 'ai', 'products'])
+
+
 # ---------------------------------------------------------------- the check
 def run(target, code):
     T0 = time.time()
@@ -196,6 +258,7 @@ def run(target, code):
         t = enrich(t, grp, ros['tp'] if grp == 'ТП' else ros['mp'], comp, grp)      # whole base: cluster/multi checks
         t = t[t[grp].map(R.key).isin(keys)].copy()
         t['who'] = t[grp]
+        t['grp'] = grp
         parts[grp] = t
     step('fetched')
     tp = parts.get('ТП', pd.DataFrame())
@@ -212,6 +275,17 @@ def run(target, code):
         tp.loc[close, 'Изоҳ'] = (tp.loc[close, 'Изоҳ'] + '; Мерч фотоси яқин пландан (аптека кўринмайди)').str.strip('; ')
         parts['ТП'] = tp
     allv = pd.concat(parts.values(), ignore_index=True) if parts else pd.DataFrame()
+    AU = audio_for(allv) if len(allv) else pd.DataFrame(columns=['id', 'url', 'dur', 'silence_pct', 'status', 'comment', 'ai', 'products'])
+    step('audio')
+    if len(AU):
+        a = allv[['id']].merge(AU.assign(id=AU['id'].astype(int)), on='id', how='left')
+        allv['a_status'] = a['status'].values
+        bad = allv['a_status'].isin(['Подозрительная', 'Нет записи'])
+        allv.loc[bad, 'Шубҳали'] = True
+        why = ('Аудиозапись: ' + a['status'].fillna('') + ' — ' + a['comment'].fillna('')).values
+        allv.loc[bad, 'Изоҳ'] = (allv.loc[bad, 'Изоҳ'].fillna('') + '; ' + pd.Series(why, index=allv.index)[bad]).str.strip('; ')
+    else:
+        allv['a_status'] = None
 
     # ---------- summary per employee
     # last visit of each employee to each pharmacy in the last 3 months (from the visit cache)
@@ -258,6 +332,10 @@ def run(target, code):
                     'Охват %': round((att.k > 0).mean() * 100) if len(att) else 0,
                     'Посещено незакреплённых': int((~cv.att).sum()),
                     'Аптек с 7+ визитами': int((cv.k > 7).sum())})
+        if len(v):
+            st = v['a_status']
+            row.update({'Записей проверено': int(st.notna().sum()), 'Без записи': int(st.eq('Нет записи').sum()),
+                        'Подозр. записей': int(st.eq('Подозрительная').sum())})
         summ.append(row)
         cov_rows.append(cv.assign(emp=r.name))
     S = pd.DataFrame(summ)
@@ -285,7 +363,7 @@ def run(target, code):
                 c = ws.cell(i, j, val)
                 if isinstance(val, str) and val.startswith('http'):         # photo links: clickable
                     c.hyperlink = val
-                    c.value = 'Фото 1' if df.columns[j - 1] == 'Фото 1' else 'Фото 2' if df.columns[j - 1] == 'Фото 2' else 'Открыть фото'
+                    c.value = 'Фото 1' if df.columns[j - 1] == 'Фото 1' else 'Фото 2' if df.columns[j - 1] == 'Фото 2' else ('Слушать' if df.columns[j - 1] == 'Запись' else 'Открыть фото')
                     c.font = Font(color='0563C1', underline='single')
         for j, c in enumerate(df.columns, 1):
             ws.column_dimensions[get_column_letter(j)].width = (widths or {}).get(c, max(10, min(40, len(str(c)) + 2)))
@@ -333,6 +411,22 @@ def run(target, code):
                           'Что увидел ИИ': tp['mcom'], 'Фото 1': tp['Фото 1'], 'Фото 2': tp['Фото 2']}).sort_values(['ТП', 'Дата'])
         table(ws, M, 1, {'ТП': 30, 'Аптека': 34, 'Результат': 24, 'Фото с мерчем': 14, 'Что увидел ИИ': 60, 'Фото 1': 10, 'Фото 2': 10})
 
+    if len(AU):
+        ws = wb.create_sheet('Аудиозаписи')
+        A = allv[['id', 'day', 'dt', 'who', 'Контр-агент/Врач']].merge(AU.assign(id=AU['id'].astype(int)), on='id', how='inner')
+        A = A.sort_values(['who', 'day', 'dt'])
+        AA = pd.DataFrame({'Дата': A['day'], 'Время': A['dt'].dt.strftime('%H:%M'), 'Сотрудник': A['who'], 'Аптека': A['Контр-агент/Врач'],
+                           'Длительность, сек': pd.to_numeric(A['dur'], errors='coerce').round(0),
+                           'Тишина, %': pd.to_numeric(A['silence_pct'], errors='coerce'), 'Статус': A['status'], 'Причина': A['comment'],
+                           'Что услышал ИИ': A['ai'].fillna(''), 'Запись': A['url'].fillna('')})
+        table(ws, AA, 1, {'Сотрудник': 30, 'Аптека': 34, 'Статус': 16, 'Причина': 40, 'Что услышал ИИ': 70, 'Запись': 12})
+        for i, st in enumerate(AA['Статус'], 2):
+            if st in ('Подозрительная', 'Нет записи'):
+                for j in range(1, 11):
+                    ws.cell(i, j).fill = red if st == 'Нет записи' else yel
+        for i in range(2, len(AA) + 2):
+            ws.cell(i, 9).alignment = Alignment(wrap_text=True, vertical='top')
+
     ws = wb.create_sheet('Охват аптек')
     if len(C):
         # visited first (most visits on top), then not visited - the longest-abandoned at the bottom
@@ -362,6 +456,10 @@ def run(target, code):
         "Это не доказательство обмана, а повод проверить — причина указана у каждого визита.",
         "Мерч (только ТП): Риномакс ХОТ и Форсил на ОДНОМ фото; Витрина — на витрине/полке, Касса — у кассы. "
         "Проверяет ИИ (Google Gemini), точность ≈75% — сомнительные строки проверяйте по ссылке на фото.",
+        "Аудиозаписи: у каждого визита в аптеку записывается разговор. Бесплатно проверяется каждая запись: есть ли она, "
+        "длительность, доля тишины. «Подозрительная» — короче 30 сек, 85%+ тишины или почти без звука. Несколько записей каждого "
+        "сотрудника дополнительно прослушивает ИИ (есть ли диалог с фармацевтом, о чём разговор, какие препараты названы). "
+        "Это повод послушать запись, а не доказательство.",
         "Охват: закреплённые аптеки — из базы Sales (поле «Фарм. пред» у аптеки). Красным — закреплённые, но не посещённые за период; "
         "жёлтым — посещённые, но не закреплённые за сотрудником.",
     ], 1):
@@ -375,6 +473,8 @@ def run(target, code):
     for d in S.sort_values('% подозр.', ascending=False).to_dict('records'):
         line = (f"• <b>{d['Сотрудник']}</b> ({d['Должность']}): {d['Визитов']} визит, шубҳали {d['Подозрительных']} "
                 f"({d['% подозр.']}%), қамров {d['Посещено закреплённых']}/{d['Закреплено аптек']} ({d['Охват %']}%)")
+        if pd.notna(d.get('Записей проверено')) and d.get('Записей проверено'):
+            line += f", аудио: шубҳали {int(d.get('Подозр. записей') or 0)}, ёзувсиз {int(d.get('Без записи') or 0)}"
         if d['Должность'] == 'ТП' and pd.notna(d.get('Мерч проверено')):
             line += f", мерч: витрина {int(d.get('Витрина') or 0)}, касса {int(d.get('Касса') or 0)}"
         L.append(line)
