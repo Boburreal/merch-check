@@ -32,16 +32,28 @@ def _run(cmd):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
 
+def _ffmpeg():
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()       # static ffmpeg from pip (cached with the other packages)
+    except Exception:
+        return "ffmpeg"
+
+
 def measure(path: str) -> dict:
     """Duration, silence share and loudness with ffmpeg (free)."""
-    dur = _run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path]).stdout.strip()
-    dur = float(dur) if dur and dur != "N/A" else 0.0
-    out = _run(["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-af",
+    out = _run([_ffmpeg(), "-hide_banner", "-i", path, "-af",
                 "silencedetect=noise=-38dB:d=1.5,volumedetect", "-f", "null", "-"]).stderr
+    # real decoded length (the header of raw .aac files only estimates it, wrongly for quiet recordings)
+    t = re.findall(r"time=(\d+):(\d+):([\d.]+)", out)
+    dur = int(t[-1][0]) * 3600 + int(t[-1][1]) * 60 + float(t[-1][2]) if t else 0.0
+    if not dur:
+        d = re.search(r"Duration: (\d+):(\d+):([\d.]+)", out)
+        dur = int(d.group(1)) * 3600 + int(d.group(2)) * 60 + float(d.group(3)) if d else 0.0
     sil = sum(float(x) for x in re.findall(r"silence_duration: ([\d.]+)", out))
     mean = re.search(r"mean_volume: (-?[\d.]+) dB", out)
     peak = re.search(r"max_volume: (-?[\d.]+) dB", out)
-    return {"dur": round(dur, 1), "silence_pct": round(sil / dur * 100) if dur else 100,
+    return {"dur": round(dur, 1), "silence_pct": min(100, round(sil / dur * 100)) if dur else 100,
             "mean_db": float(mean.group(1)) if mean else None, "max_db": float(peak.group(1)) if peak else None}
 
 

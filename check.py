@@ -172,7 +172,7 @@ def audio_for(allv: pd.DataFrame):
     from sales import login, switch_project
     ph = allv[allv['Тип визита'].fillna('').str.contains('аптек', case=False) | allv['Тип визита'].fillna('').str.contains('контрагент', case=False)]
     days = sorted({d.date() for d in ph['day']})
-    stored = {d: store.load(f"a_{d.isoformat()}") for d in days}
+    stored = {d: store.load(f"a2_{d.isoformat()}") for d in days}
     have = {}
     for d, a in stored.items():
         for r in a.to_dict('records'):
@@ -213,7 +213,7 @@ def audio_for(allv: pd.DataFrame):
         allr = pd.concat([old, pd.DataFrame(rows)], ignore_index=True) if len(old) else pd.DataFrame(rows)
         allr['id'] = allr['id'].astype(int)
         allr = allr.drop_duplicates('id', keep='last')
-        store.save(f"a_{d.isoformat()}", allr)
+        store.save(f"a2_{d.isoformat()}", allr)
         for r in allr.to_dict('records'):
             have[int(r['id'])] = r
     print(f"::notice::audio todo={len(todo)} done_now={sum(len(v) for v in new.values())} ai={len(ai_ids)}")

@@ -6,3 +6,4 @@ cryptography
 beautifulsoup4
 lxml
 scipy
+imageio-ffmpeg
