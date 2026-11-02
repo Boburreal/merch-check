@@ -1,0 +1,33 @@
+name: Merch by Claude (export / import)
+on:
+  workflow_dispatch:
+    inputs:
+      step: {description: "export / import", default: "export"}
+      day: {description: "YYYY-MM-DD", default: ""}
+permissions:
+  contents: write
+concurrency:
+  group: report
+  cancel-in-progress: false
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install requests pandas openpyxl pillow cryptography scipy beautifulsoup4 lxml
+      - run: python claude_merch.py
+        env:
+          STEP: ${{ inputs.step }}
+          DAY: ${{ inputs.day }}
+          SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
+          SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - run: |
+          git config user.name "merch-bot"; git config user.email "bot@users.noreply.github.com"
+          git add -A drop
+          git diff --cached --quiet && exit 0
+          git commit -m "claude merch ${{ inputs.step }} ${{ inputs.day }}"
+          for i in 1 2 3; do git pull --rebase -X ours -q && git push -q && break; sleep 7; done
