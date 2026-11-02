@@ -125,6 +125,16 @@ def stored_merch(d1, d2):
     return m
 
 
+def merch_summary(tp, merch):
+    """Aggregate merch stats only (no personal data in public logs)."""
+    if not len(merch):
+        return
+    m = tp[['id']].merge(merch, on='id', how='inner')
+    num = lambda c: pd.to_numeric(m[c], errors='coerce').fillna(0)   # same counting as tp_file
+    print(f"::notice::merch summary: tp_visits={len(tp)} checked={len(m)} cats={m['category'].value_counts().to_dict()} "
+          f"vitrina={int(num('vitrina').sum())} kassa={int(num('kassa').sum())}")
+
+
 MON = {1: 'Январь', 2: 'Февраль', 3: 'Март', 4: 'Апрель', 5: 'Май', 6: 'Июнь', 7: 'Июль', 8: 'Август',
        9: 'Сентябрь', 10: 'Октябрь', 11: 'Ноябрь', 12: 'Декабрь'}
 
@@ -172,6 +182,7 @@ if MODE == "merch":                     # only check merch photos of earlier day
         if time.time() - START > MERCH_MIN * 60:
             break
         merch_for_day(back, tp)
+    merch_summary(tp, stored_merch(f1, d2))
     raise SystemExit(0)
 if MODE in ("daily", "update") and not len(tp[tp.day.dt.date == d2]) and not len(mp[mp.day.dt.date == d2]):
     send_text(f"📊 <b>{title}</b>\nБу кунда ТП ва МП визитлари йўқ (дам олиш куни бўлса керак).")
@@ -181,11 +192,7 @@ if MODE in ("daily", "update") and not len(tp[tp.day.dt.date == d2]) and not len
 if MODE in ("daily", "update"):
     merch_for_day(d2, tp)
 merch = stored_merch(f1, d2)
-if len(merch):                          # aggregate merch stats only (no personal data in public logs)
-    _m = tp[['id']].merge(merch, on='id', how='inner')
-    print(f"::notice::merch summary {f1}..{d2}: tp_visits={len(tp)} checked={len(_m)} "
-          f"cats={_m['category'].value_counts().to_dict()} vitrina={int(_m['vitrina'].fillna(0).astype(bool).sum())} "
-          f"kassa={int(_m['kassa'].fillna(0).astype(bool).sum())}")
+merch_summary(tp, merch)
 m = tp[['id']].merge(merch, on='id', how='left') if len(merch) else tp[['id']].assign(category=None)
 tp['f_closeup'] = m['category'].eq('suspicious').values
 tp.loc[tp['f_closeup'], 'Шубҳали'] = True
