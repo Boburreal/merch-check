@@ -259,6 +259,8 @@ else:
 send_text("\n".join(msg))
 if os.environ.get('ONLY_TP'):
     files = files[:1]
+if os.environ.get('ONLY_MP'):
+    files = files[1:]
 for p, cap in files:
     translate_workbook(p)          # files are delivered in Russian
     send_file(p, cap)

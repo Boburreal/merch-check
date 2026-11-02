@@ -14,6 +14,7 @@ on:
       auto: {description: "1 = jadval bo'yicha (bir kunda bir marta yuboriladi)", default: ""}
       merch_minutes: {description: "ҳисоботдан кейин олдинги кунлар мерчини текшириш (дақиқа)", default: "60"}
       only_tp: {description: "1 = фақат ТП файли", default: ""}
+      only_mp: {description: "1 = фақат МП файли", default: ""}
 permissions:
   contents: write
 concurrency:
@@ -52,6 +53,7 @@ jobs:
           MERCH_MINUTES: '25'
           BACKLOG_MINUTES: ${{ inputs.merch_minutes || '60' }}
           ONLY_TP: ${{ inputs.only_tp }}
+          ONLY_MP: ${{ inputs.only_mp }}
           AUTO: ${{ github.event_name == 'schedule' && '1' || inputs.auto }}
       - name: Save merch results (encrypted)
         if: always()
