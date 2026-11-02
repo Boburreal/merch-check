@@ -47,11 +47,13 @@ def period():
         return y, y, f"Кечаги визитлар (янгиланган) — {y:%d.%m.%Y}"
     if MODE == "weekly":
         mon = today - dt.timedelta(days=today.weekday())   # runs on Sunday evening: this Mon..Sun
+        if today.weekday() != 6:                            # started late (Monday or later): the last full week
+            mon -= dt.timedelta(days=7)
         return mon, mon + dt.timedelta(days=6), f"Ҳафталик ҳисобот — {mon:%d.%m}–{mon + dt.timedelta(days=6):%d.%m.%Y}"
     if MODE == "monthly":
         last = today.replace(day=1) - dt.timedelta(days=1)
         return last.replace(day=1), last, f"Ойлик ҳисобот — {last:%m.%Y}"
-    d1 = dt.date.fromisoformat(os.environ["FROM"]); d2 = dt.date.fromisoformat(os.environ["TO"])
+    d1 = dt.date.fromisoformat(os.environ["FROM"]); d2 = dt.date.fromisoformat(os.environ["TO"])   # range / merch
     return d1, d2, f"Ҳисобот — {d1:%d.%m.%Y}–{d2:%d.%m.%Y}"
 
 
@@ -164,6 +166,17 @@ except Exception as e:
 tp = enrich(tp, 'ТП', tp_people, comp, 'ТП')
 mp = enrich(mp, 'МП', mp_people, comp, 'МП')
 print(f"::notice::{MODE} {f1}..{d2} tp={len(tp)} mp={len(mp)}")
+if MODE == "merch":                     # only check merch photos of earlier days (no report)
+    START = time.time(); MERCH_MIN = int(os.environ.get("BACKLOG_MINUTES", "300"))
+    for back in sorted({x.date() for x in tp.day}, reverse=True):
+        if time.time() - START > MERCH_MIN * 60:
+            break
+        merch_for_day(back, tp)
+    raise SystemExit(0)
+if MODE in ("daily", "update") and not len(tp[tp.day.dt.date == d2]) and not len(mp[mp.day.dt.date == d2]):
+    send_text(f"📊 <b>{title}</b>\nБу кунда ТП ва МП визитлари йўқ (дам олиш куни бўлса керак).")
+    print("::notice::no visits - message sent")
+    raise SystemExit(0)
 
 if MODE in ("daily", "update"):
     merch_for_day(d2, tp)
