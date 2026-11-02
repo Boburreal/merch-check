@@ -7,7 +7,7 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: report
+  group: claude-merch
   cancel-in-progress: false
 jobs:
   c:
