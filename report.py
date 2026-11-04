@@ -190,6 +190,7 @@ if MODE in ("daily", "update") and not len(tp[tp.day.dt.date == d2]) and not len
     raise SystemExit(0)
 
 if MODE in ("daily", "update"):
+    START = time.time()                 # the merch budget starts now (export/snapshot time does not count)
     merch_for_day(d2, tp)
 merch = stored_merch(f1, d2)
 merch_summary(tp, merch)
