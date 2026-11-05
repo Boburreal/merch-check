@@ -1,37 +1,44 @@
-"""One-off: doctors / work places lists and the recent pharmacy-location log (compact notices)."""
-import re, datetime as dt
-import pandas as pd
-import store
+"""One-off: the 'add pharmacy' form and an INN search in both projects (read only, nothing is saved)."""
+import re
+from bs4 import BeautifulSoup
 from sales import login, switch_project, restore, BASE
+from companies import COLS
 
+INNS = ['309877286', '306591353', '302646222']
 s = login()
 out = []
 for p in (1, 4):
     switch_project(s, p)
-    for path in ('/lists/doctors', '/lists/work_places'):
-        r = s.get(BASE + path, timeout=60)
-        heads = [re.sub(r'<[^>]+>|\s+', ' ', h).strip() for h in re.findall(r'<th[^>]*>(.*?)</th>', r.text, re.S)][2:]
-        csrf = re.search(r"'X-CSRF-TOKEN':\s*'([^']+)'", r.text) or re.search(r'data-csrf="([^"]+)"', r.text)
-        n, sample = '?', ''
-        try:
-            data = {"draw": 1, "start": 0, "length": 2, "search[value]": "", "search[regex]": "false"}
-            for i in range(len(heads) + 2):
-                data[f"columns[{i}][data]"] = i
-            x = s.post(BASE + path, data=data, timeout=120, headers={"X-CSRF-TOKEN": csrf.group(1),
-                       "X-Requested-With": "XMLHttpRequest", "Accept": "application/json"}).json()
-            n = x.get('recordsTotal')
-            sample = str(x.get('data', [])[:1])[:700]
-        except Exception as e:
-            sample = 'ERR ' + str(e)[:100]
-        out.append(f"P{p} {path} n={n} th={'|'.join(heads)} sample={sample}")
+    r = s.get(BASE + "/lists/companies/create", timeout=60)
+    soup = BeautifulSoup(r.text, "lxml")
+    f = soup.find("form", attrs={"enctype": True}) or soup.find_all("form")[-1]
+    fl = []
+    for el in f.find_all(["input", "select", "textarea"]):
+        n = el.get("name") or el.get("wire:model") or el.get("id")
+        if not n or n in ("_token",):
+            continue
+        lab = ''
+        if el.get("id"):
+            l = soup.find("label", attrs={"for": el["id"]})
+            lab = l.get_text(" ", strip=True) if l else ''
+        extra = ''
+        if el.name == 'select':
+            opts = el.find_all("option")
+            extra = f"[{len(opts)}: " + "; ".join(o.get_text(strip=True) for o in opts[:6]) + "]"
+        req = '*' if el.has_attr('required') else ''
+        fl.append(f"{n}{req}({el.name}/{el.get('type','')}){'='+lab if lab else ''}{extra}")
+    out.append(f"P{p} create [{r.status_code}] action={f.get('action')} fields: " + " | ".join(fl))
+    tok = re.search(r"'X-CSRF-TOKEN':\s*'([^']+)'", s.get(BASE + "/lists/companies", timeout=60).text).group(1)
+    for inn in INNS:
+        data = {"draw": 1, "start": 0, "length": 50, "search[value]": inn, "search[regex]": "false"}
+        for i in range(len(COLS)):
+            data[f"columns[{i}][data]"] = i; data[f"columns[{i}][searchable]"] = "true"
+        j = s.post(BASE + "/lists/companies", data=data, timeout=120, headers={"X-CSRF-TOKEN": tok,
+                   "X-Requested-With": "XMLHttpRequest", "Accept": "application/json"}).json()
+        rows = j.get('data', [])
+        txt = lambda v: re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', str(v or ''))).strip()
+        out.append(f"P{p} INN {inn}: {len(rows)} -> " + " ;; ".join(
+            " / ".join(txt(v) for k, v in (r.items() if isinstance(r, dict) else enumerate(r)) if k not in ('action', 0, '_sel', 'location')) for r in rows)[:600])
 restore(s)
-for o in out:
-    print("::notice::" + o)
-
-log = store.load('loc_log')
-if len(log):
-    w = pd.to_datetime(log['Аниқланди'], format='%d.%m.%Y %H:%M', errors='coerce')
-    log['d'] = w.dt.strftime('%d.%m')
-    rec = log[w >= pd.Timestamp(dt.date.today() - dt.timedelta(days=10))]
-    t = rec.groupby(['d', 'Ўзгариш']).size().unstack(fill_value=0)
-    print("::notice::LOC " + " || ".join(f"{d}: " + ", ".join(f"{k}={v}" for k, v in r.items() if v) for d, r in t.iterrows()))
+print("::notice::" + "\n".join(out[:2]))
+print("::notice::" + "\n".join(out[2:]))
