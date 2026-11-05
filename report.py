@@ -185,7 +185,11 @@ if MODE == "recheck":                   # re-check visits where only the counter
         if not len(m):
             continue
         m['id'] = m['id'].astype(int)
-        ids = set(m[(m['category'] == 'merch') & (pd.to_numeric(m['vitrina'], errors='coerce') == 0)]['id'])
+        vv = pd.to_numeric(m['vitrina'], errors='coerce').fillna(0)
+        kk = pd.to_numeric(m['kassa'], errors='coerce').fillna(0)
+        done2 = m['pv'].astype(str).eq('2') if 'pv' in m else pd.Series(False, index=m.index)
+        # only one place found (Витрина without Касса or Касса without Витрина) -> may be mixed up; check again once
+        ids = set(m[(m['category'] == 'merch') & ((vv == 0) | (kk == 0)) & ~done2]['id'])
         part = tp[tp.id.isin(ids)]
         for i, (_, r) in enumerate(part.iterrows()):
             try:
@@ -195,12 +199,13 @@ if MODE == "recheck":                   # re-check visits where only the counter
             n += 1
             if res['category'] != 'error':
                 k = m['id'] == r['id']
-                if int(res['vitrina']) != 0:
+                old_v, old_k = int(float(m.loc[k, 'vitrina'].iloc[0] or 0)), int(float(m.loc[k, 'kassa'].iloc[0] or 0))
+                if (int(res['vitrina']), int(res['kassa'])) != (old_v, old_k):
                     fixed += 1
-                m.loc[k, ['category', 'vitrina', 'kassa', 'comment', 'raw']] = [res['category'], res['vitrina'], res['kassa'],
-                                                                              comment(res.get('raw')), json.dumps(res.get('raw'), ensure_ascii=False)]
+                m.loc[k, ['category', 'vitrina', 'kassa', 'comment', 'raw', 'pv']] = [res['category'], res['vitrina'], res['kassa'],
+                                                                                    comment(res.get('raw')), json.dumps(res.get('raw'), ensure_ascii=False), '2']
         store.save(f"m_{day.isoformat()}", m)
-    print(f"::notice::recheck {d1}..{d2}: rechecked={n} vitrina_found_now={fixed}")
+    print(f"::notice::recheck {d1}..{d2}: rechecked={n} changed={fixed}")
     raise SystemExit(0)
 if MODE == "merch":                     # only check merch photos of earlier days (no report)
     START = time.time(); MERCH_MIN = int(os.environ.get("BACKLOG_MINUTES", "300"))
