@@ -1,11 +1,14 @@
-import pandas as pd, store
-v = store.load('v_tp_2026-10')
-v = v[v['Фарм. пред'].str.contains('Торг', na=False)]
-v['d'] = pd.to_datetime(v['Дата'], format='%d.%m.%Y').dt.date
-tot = chk = 0; out = []
-for d, g in v.groupby('d'):
-    m = store.load(f"m_{d.isoformat()}")
-    ok = set(m[m['category'].isin(['merch', 'none', 'suspicious', 'no_photo'])]['id'].astype(int)) if len(m) else set()
-    c = int(g['#'].astype(int).isin(ok).sum()); tot += len(g); chk += c
-    out.append(f"{d:%d.%m}:{c}/{len(g)}")
-print("::notice::merch coverage " + " ".join(out) + f" | TOTAL {chk}/{tot}")
+import os, requests, store, pandas as pd
+from sales import login
+ids = {239627, 239609}
+v = store.load('v_tp_2026-11')
+s = login()
+os.makedirs('/tmp/ph', exist_ok=True)
+for _, r in v[v['#'].astype(int).isin(ids)].iterrows():
+    for k in ('Фото 1', 'Фото 2'):
+        u = r.get(k)
+        if isinstance(u, str) and u.startswith('http'):
+            open(f"/tmp/ph/{r['#']}_{k[-1]}.jpg", 'wb').write(s.get(u, timeout=60).content)
+print("::notice::saved " + str(sorted(os.listdir('/tmp/ph'))))
+m = store.load('m_2026-11-03')
+print("::notice::cols " + str(list(m.columns)))
