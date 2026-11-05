@@ -1,23 +1,8 @@
-import os, requests, store, pandas as pd
-from sales import login
-ids = {239627, 239609}
-import datetime as dt
+import datetime as dt, json
+from merch import check_visit, pick_model
 from export import fetch
 v = fetch(1, dt.date(2026,11,3), dt.date(2026,11,3))
-s = login()
-os.makedirs('/tmp/ph', exist_ok=True)
-for _, r in v[v['#'].astype(int).isin(ids)].iterrows():
-    for k in ('Фото 1', 'Фото 2'):
-        u = r.get(k)
-        if isinstance(u, str) and u.startswith('http'):
-            open(f"/tmp/ph/{r['#']}_{k[-1]}.jpg", 'wb').write(s.get(u, timeout=60).content)
-print("::notice::saved " + str(sorted(os.listdir('/tmp/ph'))))
-m = store.load('m_2026-11-03')
-print("::notice::cols " + str(list(m.columns)))
-
-import io, tarfile, roster as R
-b = io.BytesIO()
-with tarfile.open(fileobj=b, mode='w:gz') as t:
-    t.add('/tmp/ph', arcname='ph')
-os.makedirs('drop', exist_ok=True)
-open('drop/photos.fer', 'wb').write(R._fernet().encrypt(b.getvalue()))
+m = pick_model()
+for _, r in v[v['#'].astype(int).isin({239627, 239609})].iterrows():
+    res = check_visit(m, r['Фото 1'], r['Фото 2'])
+    print(f"::notice::{r['#']} cat={res['category']} vitrina={res['vitrina']} kassa={res['kassa']} raw={json.dumps(res.get('raw'))[:300]}")
