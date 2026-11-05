@@ -76,15 +76,26 @@ def ask_ai(model: str, data: bytes, mime: str, prompt: str = None) -> dict:
     raise RuntimeError("Gemini audio: too many retries")
 
 
-def ai(data: bytes, mime: str, prompt: str = None) -> dict:
-    """Same model rotation as the merch check (next free model when one's daily limit ends)."""
-    model = merch.pick_model()
-    while True:
+def ai(data: bytes, mime: str, prompt: str = None, full_first: bool = True) -> dict:
+    """Audio needs the stronger (non-lite) flash models - the lite ones often 'hear' a talk that is not there.
+    Next model when one's free daily limit ends; lite models only as the last resort."""
+    import os
+    merch.pick_model()                                   # loads the model list
+    if os.environ.get("GEMINI_MODEL"):
+        order = [os.environ["GEMINI_MODEL"]]
+    else:
+        chain = [m for m in merch._CHAIN if m not in merch._DEAD]
+        order = ([m for m in chain if 'lite' not in m] + [m for m in chain if 'lite' in m]) if full_first else chain
+    for model in order:
         try:
             return ask_ai(model, data, mime, prompt)
         except merch.DailyQuotaExceeded:
-            merch._DEAD.add(model)
-            model = merch.pick_model()
+            _AUDIO_DEAD.add(model)
+            continue
+    raise merch.DailyQuotaExceeded("audio: no free model left today")
+
+
+_AUDIO_DEAD = set()
 
 
 MIME = {"aac": "audio/aac", "m4a": "audio/mp4", "mp3": "audio/mp3", "ogg": "audio/ogg", "wav": "audio/wav", "webm": "audio/webm",
