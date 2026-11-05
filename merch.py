@@ -35,7 +35,12 @@ For EACH visit photo answer:
     "shelf"   = a shelf of a display cabinet / showcase / wall rack, usually with other medicine boxes beside, above or below them on shelves (also glass display window);
     "counter" = the flat top of the sales counter / cash desk where customers are served: wide flat surface in front, often a cash register, keyboard, card terminal, monitor, counter mat or calculator nearby;
     "unknown" = cannot tell (held in hand, against a wall, too close)
-Think carefully about surface: products standing on a wide, flat, mostly empty counter top are "counter" even if shelves are visible in the background.
+Think carefully about surface - decide by WHERE THE TWO BOXES THEMSELVES STAND, not by what is in the foreground:
+- products standing on a wide, flat, mostly empty counter top in front of the customer are "counter" even if shelves are visible in the background;
+- products standing on a shelf or rack BEHIND the counter (the pharmacist's side, among other medicine boxes on the same shelf) are "shelf",
+  even when the counter, a calculator or a keyboard is in the foreground of the photo - the photo is often taken from the customer side, from a distance;
+- several boxes of A and B stacked / lined up as a display (many facings, often behind glass) are "shelf" (a vitrina display), even when that display stands on the counter.
+The photo may be taken from far away: look for the small orange-yellow (A) and purple (B) boxes anywhere in the picture.
 Return ONLY JSON: {"photos":[{"rinomaks":bool,"forsil":bool,"pharmacy_visible":bool,"surface":"..."},{...}]}"""
 
 
