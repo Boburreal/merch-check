@@ -60,6 +60,37 @@ def blocks(ws):
     return out
 
 
+def _relink(ws):
+    """openpyxl does not move hyperlinks when rows move: rebuild them from the link texts in column H."""
+    ws._hyperlinks = []
+    for row in ws.iter_rows(min_col=8, max_col=8):
+        c = row[0]
+        if isinstance(c.value, str) and c.value.startswith('http'):
+            c.hyperlink = c.value
+
+
+def prune(ws, month: int) -> int:
+    """Keep only the day blocks of `month` (each month is a separate file). Returns removed blocks."""
+    heads = [r for r in range(1, ws.max_row + 1) if ws.cell(r, 2).value == 'Менеджер']
+    if not heads:
+        return 0
+    ranges = []
+    for i, h in enumerate(heads):
+        end = (heads[i + 1] - 1) if i + 1 < len(heads) else ws.max_row
+        try:
+            m = int(str(ws.cell(h, 1).value).strip()[3:5])
+        except Exception:
+            continue
+        if m != month:
+            ranges.append((h, end))
+    if len(ranges) == len(heads):            # never leave the file without a block (styles are copied from it)
+        ranges = ranges[1:]
+    for a, b in sorted(ranges, reverse=True):
+        ws.delete_rows(a, b - a + 1)
+    _relink(ws)
+    return len(ranges)
+
+
 def key(name):
     import roster as R
     return R.key(name)
@@ -211,6 +242,13 @@ def run(days, send=True):
         write_block(ws, d, rows)
         added.append((d, rows))
         print(f"::notice::az {d}: {len(rows) // PER_TP} ТП, {len(rows)} rows")
+    if added:
+        target = max(d for d, _ in added).month
+        if any(int(b[0][3:5]) != target for b in blocks(ws) if b[0][3:5].isdigit()):
+            old = io.BytesIO(); wb.save(old)            # previous month's file is kept separately
+            prev = [b[0] for b in blocks(ws) if b[0][3:5].isdigit() and int(b[0][3:5]) != target]
+            store.save_bytes(f"az_file_m{prev[0][3:5]}", old.getvalue())
+            print(f"::notice::az: month {target} starts a new file, removed {prune(ws, target)} old blocks")
     save_file(wb)
     if send and (added or refilled):
         from telegram import send_text, send_file
@@ -231,7 +269,43 @@ if __name__ == "__main__":
     import os, sys
     mode = os.environ.get("AZ_MODE", "")
     today = dt.datetime.now(TZ).date()
-    if mode == "upload":                     # Bobur's own file -> becomes the base
+    if mode == "split":                      # keep only the current month in the file and send it
+        wb = load_file(); ws = wb.active
+        b = io.BytesIO(); wb.save(b); store.save_bytes('az_file_m10', b.getvalue())
+        n = prune(ws, today.month); save_file(wb)
+        path = f"/tmp/Аудиозаписи ({MON[today.month]}-{today:%y}).xlsx"; wb.save(path)
+        from telegram import send_file
+        send_file(path, f"Аудиозаписи — фақат {MON[today.month].lower()} (олдинги ой алоҳида сақланди)")
+        print(f"::notice::az split: removed {n} blocks, kept {[x[0] for x in blocks(ws)]}")
+    elif mode == "review":                   # transcripts of this month's rows for a manual check (encrypted for Claude)
+        import json, roster as R
+        from sales import login, switch_project
+        wb = load_file(); ws = wb.active
+        TP = ("Transcribe this pharmacy visit recording (Uzbek/Russian) as plain text, speaker turns marked R: (sales rep) "
+              "and P: (pharmacist/other). If there is no speech write [no speech]. Return ONLY JSON {\"transcript\": \"...\"}")
+        s_ = login(); switch_project(s_, 1)
+        out = []
+        for row in ws.iter_rows(min_row=1):
+            h = row[7].value
+            if not (isinstance(h, str) and '/visits/' in h) or row[1].value == 'Менеджер':
+                continue
+            vid = int(re.search(r'/visits/(\d+)/', h).group(1))
+            rec = {'id': vid, 'who': row[1].value, 'date': row[3].value, 'comment': row[6].value}
+            try:
+                url = audio.audio_url(s_, vid)
+                if url:
+                    ext = url.split('?')[0].rsplit('.', 1)[-1].lower()
+                    data = s_.get(url, timeout=120).content
+                    with tempfile.NamedTemporaryFile(suffix='.' + ext) as f:
+                        f.write(data); f.flush(); rec['m'] = audio.measure(f.name)
+                    rec['t'] = audio.ai(data, audio.MIME.get(ext, 'audio/aac'), TP).get('transcript', '')
+            except Exception as e:
+                rec['err'] = str(e)[:150]
+            out.append(rec)
+        os.makedirs('drop', exist_ok=True)
+        open('drop/az_review.fer', 'wb').write(R._fernet().encrypt(json.dumps(out, ensure_ascii=False).encode()))
+        print(f"::notice::az review: {len(out)} rows")
+    elif mode == "upload":                     # Bobur's own file -> becomes the base
         src = sys.argv[1]
         store.save_bytes('az_file', open(src, 'rb').read())
         print("::notice::az base saved")
