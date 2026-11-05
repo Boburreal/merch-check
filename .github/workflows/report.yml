@@ -1,10 +1,6 @@
 name: Hisobot (Telegram)
 on:
-  schedule:
-    - cron: "30 12 * * *"    # 17:30 Tashkent - kunlik (oy boshidan bugungacha fayllar)
-    - cron: "30 3 * * *"     # 08:30 Tashkent - kechagi kun yangilangan
-    - cron: "0 18 * * 0"     # Yakshanba 23:00 - haftalik tahlil (alohida fayl)
-    - cron: "0 4 1 * *"      # Har oy 1-sanasi 09:00 - oylik tahlil (alohida fayl)
+  # the schedule is kept by the Cloudflare Worker (on time); GitHub's own cron ran hours late and doubled the work
   workflow_dispatch:
     inputs:
       mode: {description: "daily / update / weekly / monthly / range", default: "daily"}
