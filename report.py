@@ -213,7 +213,7 @@ if MODE == "recheck":                   # re-check visits where only the counter
                 old_v, old_k = int(float(m.loc[k, 'vitrina'].iloc[0] or 0)), int(float(m.loc[k, 'kassa'].iloc[0] or 0))
                 if (int(res['vitrina']), int(res['kassa'])) != (old_v, old_k):
                     fixed += 1
-                m.loc[k, ['category', 'vitrina', 'kassa', 'comment', 'raw', 'pv']] = [res['category'], res['vitrina'], res['kassa'],
+                m.loc[k, ['category', 'vitrina', 'kassa', 'comment', 'raw', 'pv']] = [str(res['category']), str(res['vitrina']), str(res['kassa']),
                                                                                     comment(res.get('raw')), json.dumps(res.get('raw'), ensure_ascii=False), '2']
         store.save(f"m_{day.isoformat()}", m)
     print(f"::notice::recheck {d1}..{d2}: rechecked={n} changed={fixed}")
