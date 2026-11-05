@@ -4,7 +4,7 @@ on:
     inputs:
       from: {description: "YYYY-MM-DD", default: ""}
       to: {description: "YYYY-MM-DD", default: ""}
-      mode: {description: "bo'sh / split / review", default: ""}
+      mode: {description: "bo'sh / split / review / relisten", default: ""}
       model: {description: "Gemini model (bo'sh = avtomatik)", default: ""}
 permissions:
   contents: write

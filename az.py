@@ -20,14 +20,17 @@ MON = {1: 'Январь', 2: 'Февраль', 3: 'Март', 4: 'Апрель',
        9: 'Сентябрь', 10: 'Октябрь', 11: 'Ноябрь', 12: 'Декабрь'}
 
 PROMPT = """This is an audio recording made by a pharmaceutical sales representative (ТП) during a visit to a pharmacy in
-Uzbekistan (Uzbek or Russian speech). Write the manager's check comment in Uzbek Cyrillic, in exactly this style:
-- "Маълумот йўқ" - nothing useful: silence, noise, no work conversation, or the rep does not talk with the pharmacist about work
-- "Остатка олинди" - the rep asked / counted the remaining stock (остатка, қолдиқ, нечта қолди) of our products
+Uzbekistan (Uzbek, Russian or Tajik speech; often street or shop noise). Our products: Риномакс, Форсил, Риноксил,
+Мирамистин, Эрегра, Тивомакс, Триомакс, Альцетро, Авирол.
+Step 1 - listen to the WHOLE recording and write a faithful short transcript with speaker turns R: (rep) and P: (pharmacist/other),
+[...] for unclear parts, "[no speech]" only if nobody talks. Do NOT invent words.
+Step 2 - ONLY from that transcript write the manager's check comment in Uzbek Cyrillic, in exactly this style:
+- "Маълумот йўқ" - no speech, only noise, private talk, or the rep does not talk with the pharmacist about our work
+- "Остатка олинди" - the rep asked / counted how many of our products are left (нечта бор, қолдиқ, остаток)
 - "Анализ қилинди товарлар сотилиши бўйича. Остатка олинди" - they discussed how our products sell AND stock was taken
 - otherwise a very short phrase of what was done, e.g. "Презентация қилинди (Риномакс)", "Мерч ҳақида гапирилди", "Заявка олинди"
-  (several may be joined with ". ")
-Our products: Риномакс, Форсил, Риноксил, Мирамистин, Эрегра, Тивомакс, Триомакс, Альцетро, Авирол.
-Return ONLY JSON {"comment": "..."}"""
+  (several may be joined with ". "). If in doubt, prefer "Маълумот йўқ" - never guess.
+Return ONLY JSON {"transcript": "...", "comment": "..."}"""
 
 
 def short_region(name: str):
@@ -308,6 +311,29 @@ if __name__ == "__main__":
         os.makedirs('drop', exist_ok=True)
         open('drop/az_review.fer', 'wb').write(R._fernet().encrypt(json.dumps(out, ensure_ascii=False).encode()))
         print(f"::notice::az review: {len(out)} rows")
+    elif mode == "relisten":                 # listen again to every row of the current file with the stronger models
+        from sales import login, switch_project
+        wb = load_file(); ws = wb.active
+        todo = []
+        for row in ws.iter_rows(min_row=1):
+            h = row[7].value
+            if isinstance(h, str) and '/visits/' in h and row[1].value != 'Менеджер':
+                todo.append((row, {'id': int(re.search(r'/visits/(\d+)/', h).group(1))}))
+        s_ = login(); switch_project(s_, 1)
+        listen(s_, [r for _, r in todo])
+        ch = 0
+        for row, r in todo:
+            if r['comment'] and not r['comment'].startswith('Текширилмади'):
+                if row[6].value != r['comment']:
+                    ch += 1
+                row[6].value = r['comment']
+            else:
+                row[6].value = 'Текширилмади (ИИ лимити)'
+        save_file(wb)
+        path = f"/tmp/Аудиозаписи ({MON[today.month]}-{today:%y}).xlsx"; wb.save(path)
+        from telegram import send_file
+        send_file(path, "Аудиозаписи — изоҳлар кучлироқ ИИ билан қайта ёзилди")
+        print(f"::notice::az relisten: {len(todo)} rows, changed {ch}, left {sum(1 for _, r in todo if not r['comment'] or r['comment'].startswith('Текширилмади'))}")
     elif mode == "upload":                     # Bobur's own file -> becomes the base
         src = sys.argv[1]
         store.save_bytes('az_file', open(src, 'rb').read())
