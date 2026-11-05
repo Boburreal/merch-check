@@ -1,22 +1,30 @@
-"""One-off read-only probe: add_company page structure and INN lookup in the full pharmacy lists."""
-import re
+"""Read-only probe of the add_company wizard: only the 'next' (INN check) step is called, nothing is saved."""
+import re, html, json
 from bs4 import BeautifulSoup
-from sales import login, switch_project, restore, BASE
-from companies import fetch_companies, _clean
+from sales import login, BASE
 
-INNS = ['309877286', '306591353', '302646222']
 s = login()
-r = s.get(BASE + "/lists/companies/add_company", timeout=60)
-soup = BeautifulSoup(r.text, "lxml")
-for i, f in enumerate(soup.find_all("form")):
-    els = [f"{e.name}:{e.get('name') or ''}:{e.get('type') or ''}:{' '.join(k+'='+str(v) for k, v in e.attrs.items() if k.startswith(('wire:', 'x-', '@')))}" for e in f.find_all(["input", "select", "button", "textarea"])]
-    print(f"::notice::form{i} action={f.get('action')} attrs={ {k: v for k, v in f.attrs.items() if k.startswith(('wire', 'x-', '@'))} } text={f.get_text(' ', strip=True)[:300]} els={els}")
-comp = re.findall(r'wire:snapshot="([^"]{0,600})', r.text)
-print("::notice::components: " + " || ".join(c.replace('&quot;', '"')[:500] for c in comp))
-restore(s)
-for p in (1, 4):
-    c = fetch_companies(p)
-    c.columns = ['_sel', 'ID', 'Название', 'Инн', 'Регион', 'Район', 'Локация', 'Фарм. пред', 'Сеть'][:len(c.columns)] + list(c.columns[9:])
-    for inn in INNS:
-        m = c[c['Инн'].astype(str).str.contains(inn) | c['Название'].astype(str).str.contains(inn)]
-        print(f"::notice::P{p} n={len(c)} INN {inn}: " + " ;; ".join(f"{r['ID']} | {r['Название']} | {r['Инн']} | {r['Регион']} | {r['Район']} | {r['Фарм. пред']} | {r['Сеть']}" for r in m.to_dict('records'))[:900])
+for inn in ('309877286', '309877286-1'):
+    r = s.get(BASE + "/lists/companies/add_company", timeout=60)
+    csrf = re.search(r'data-csrf="([^"]+)"', r.text).group(1)
+    upd = re.search(r'data-update-uri="([^"]+)"', r.text).group(1)
+    snap = next(html.unescape(x) for x in re.findall(r'wire:snapshot="([^"]+)"', r.text)
+                if '"step":"inn"' in html.unescape(x))
+    name = json.loads(snap)['memo']['name']
+    body = {"_token": csrf, "components": [{"snapshot": snap, "updates": {"inn": inn}, "calls": [{"path": "", "method": "next", "params": []}]}]}
+    x = s.post(upd, json=body, timeout=120, headers={"X-Livewire": "true", "Content-Type": "application/json",
+                                                     "X-CSRF-TOKEN": csrf, "Referer": BASE + "/lists/companies/add_company"})
+    j = x.json()['components'][0]
+    data = json.loads(j['snapshot'])['data']
+    soup = BeautifulSoup(j['effects'].get('html', ''), 'lxml')
+    els = []
+    for e in soup.find_all(['input', 'select', 'textarea', 'button']):
+        wm = next((v for k, v in e.attrs.items() if k.startswith('wire:model')), '')
+        wc = next((f"{k}={v}" for k, v in e.attrs.items() if k.startswith('wire:click')), '')
+        lab = e.find_previous('label')
+        o = ''
+        if e.name == 'select':
+            op = e.find_all('option'); o = f"[{len(op)}: " + "; ".join(z.get_text(strip=True) for z in op[:5]) + "]"
+        els.append(f"{e.name}:{wm or e.get('name', '')}{(' '+wc) if wc else ''} '{lab.get_text(' ', strip=True)[:30] if lab else ''}'{o}")
+    print(f"::notice::{name} INN {inn} [{x.status_code}] step={data.get('step')} keys={list(data)} text={soup.get_text(' ', strip=True)[:500]}")
+    print(f"::notice::INN {inn} fields={json.dumps(data.get('fields'), ensure_ascii=False)[:900]} els={' | '.join(els)[:1500]}")
