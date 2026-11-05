@@ -45,8 +45,8 @@ def fetch(project: int, d1: dt.date, d2: dt.date) -> pd.DataFrame:
                 return df
             print(f"::warning::project changed during export (attempt {attempt + 1}), retrying")
         finally:
-            if project != 1:
-                switch_project(s, 1)
+            if str(project) != str(__import__("sales")._ORIG or 1):
+                __import__("sales").restore(s)
         time.sleep(15 + 15 * attempt)
     raise RuntimeError("export: project kept changing")
 

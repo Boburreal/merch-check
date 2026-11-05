@@ -207,7 +207,7 @@ def audio_for(allv: pd.DataFrame):
                     if x:
                         new.setdefault(x[0], []).append(x[1])
         finally:
-            switch_project(s, 1)
+            __import__("sales").restore(s)
     for d, rows in new.items():
         old = stored.get(d, pd.DataFrame())
         allr = pd.concat([old, pd.DataFrame(rows)], ignore_index=True) if len(old) else pd.DataFrame(rows)
