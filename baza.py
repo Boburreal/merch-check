@@ -257,6 +257,12 @@ def plan(s, users, req, item):
     inn, n = item["inn"], item["n"]
     st, main, raw = lookup(s, inn)
     p = {"inn": inn, "asked_name": item["name"], "n": n}
+    if st == "network":
+        p["status"] = "network"
+        p["dist"] = raw.get("distributerName")
+        p["network"] = [{"id": c.get("id"), "name": c.get("name"), "in_project": c.get("in_project")}
+                        for c in (unarr(raw.get("networkCompanies")) or []) if isinstance(c, dict)]
+        return p
     if st != "found":
         p["status"], p["step"] = "no_main", st
         print(f"::warning::INN {inn}: step={st} data={json.dumps({k: v for k, v in raw.items() if k != 'fields'}, ensure_ascii=False)[:800]}")
@@ -269,9 +275,11 @@ def plan(s, users, req, item):
         uid = str(h.get("user_id")) if isinstance(h, dict) else ""
         u = users[users["id"] == uid]
         holders.append({"id": uid, "name": u["name"].iloc[0] if len(u) else f"#{uid}",
-                        "active": bool(u["active"].iloc[0]) if len(u) else False})
+                        "active": bool(u["active"].iloc[0]) if len(u) else False,
+                        "group": group_of(u.iloc[0]) if len(u) else ""})
     p["holders"] = holders
-    others = [h for h in holders if h["active"] and h["id"] != str(req["id"])]
+    # ТП and МП may work the same pharmacy: ask only when a working manager of the SAME group holds it
+    others = [h for h in holders if h["active"] and h["id"] != str(req["id"]) and h["group"] == group_of(req)]
     p["ask"] = [h["name"] for h in others]
     # free INN suffixes
     free, k, existing = [], 1, []
@@ -300,9 +308,13 @@ def plan(s, users, req, item):
 
 
 def describe(p):
+    if p["status"] == "network":
+        lst = "; ".join(f"{esc(c['name'])} (ID {c['id']})" for c in p["network"][:8])
+        return (f"🔗 ИНН <code>{p['inn']}</code> ({esc(p['asked_name'])}) — Sales бу ИННни «{esc(p['dist'])}» тармоғи деб кўрсатяпти, "
+                f"филиаллари бир ИНН билан бошқа лойиҳаларда бор: {lst}. Автомат қўшмадим — қўлда кўриб чиқинг.")
     if p["status"] == "no_main":
         return f"❗️ ИНН <code>{p['inn']}</code> ({esc(p['asked_name'])}) — базада бош аптека топилмади, қўшилмади."
-    h = ", ".join(f"{esc(x['name'])}{'' if x['active'] else ' (ишдан кетган)'}" for x in p["holders"]) or "ҳеч ким"
+    h = ", ".join(f"{esc(x['name'])} ({x.get('group') or '?'}{'' if x['active'] else ', ишдан кетган'})" for x in p["holders"]) or "ҳеч ким"
     t = [f"🏥 <b>{esc(p['main_name'])}</b> — ИНН <code>{p['inn']}</code>",
          f"   Бош аптека: {PNAME.get(p['main_projects'][0], '') if len(p['main_projects']) == 1 else 'иккала база'}; бириктирилган: {h}"]
     if p["existing"]:
@@ -326,7 +338,7 @@ def pending_save(df):
 def execute(s, users, req, plans, chat, reply_to):
     done, bad = [], []
     for p in plans:
-        if p["status"] == "no_main":
+        if p["status"] in ("no_main", "network"):
             continue
         for nb in p["new"]:
             ok, why = add(s, nb["inn"], nb["name"], p["region_id"], p["project"], req["id"], p["category_id"])
