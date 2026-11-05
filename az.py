@@ -24,12 +24,14 @@ Uzbekistan (Uzbek, Russian or Tajik speech; often street or shop noise). Our pro
 Мирамистин, Эрегра, Тивомакс, Триомакс, Альцетро, Авирол.
 Step 1 - listen to the WHOLE recording and write a faithful short transcript with speaker turns R: (rep) and P: (pharmacist/other),
 [...] for unclear parts, "[no speech]" only if nobody talks. Do NOT invent words.
-Step 2 - ONLY from that transcript write the manager's check comment in Uzbek Cyrillic, in exactly this style:
-- "Маълумот йўқ" - no speech, only noise, private talk, or the rep does not talk with the pharmacist about our work
-- "Остатка олинди" - the rep asked / counted how many of our products are left (нечта бор, қолдиқ, остаток)
-- "Анализ қилинди товарлар сотилиши бўйича. Остатка олинди" - they discussed how our products sell AND stock was taken
-- otherwise a very short phrase of what was done, e.g. "Презентация қилинди (Риномакс)", "Мерч ҳақида гапирилди", "Заявка олинди"
-  (several may be joined with ". "). If in doubt, prefer "Маълумот йўқ" - never guess.
+Step 2 - ONLY from that transcript write the manager's check comment in Uzbek Cyrillic: say WHAT THE CONVERSATION WAS ABOUT,
+short and concrete (1-2 sentences), for example:
+- which of our products were named and what was said about them ("Риномакс ва Форсил ҳақида гапирилди, Форсил тугаган"),
+- stock / remains asked ("Остатка олинди: Форсил 13 та, Риноксил 25 та"), sales discussed ("Товарлар сотилиши таҳлил қилинди"),
+- an order or promotion / акция / бонус discussed ("Акция ҳақида гапирилди (5+1)", "Заявка олинди"), merchandising ("Мерч ҳақида гапирилди"),
+- if the talk is NOT about our work, name its topic: "Иш ҳақида эмас: шахсий суҳбат (оила, соғлиқ ҳақида)", "Иш ҳақида эмас: бошқа мижоз билан савдо",
+- "Маълумот йўқ (овоз йўқ / фақат шовқин)" when nobody talks or nothing can be understood.
+Write only what is really heard; never guess.
 Return ONLY JSON {"transcript": "...", "comment": "..."}"""
 
 
