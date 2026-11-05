@@ -1,7 +1,9 @@
 import os, requests, store, pandas as pd
 from sales import login
 ids = {239627, 239609}
-v = store.load('v_tp_2026-11')
+import datetime as dt
+from export import fetch
+v = fetch(1, dt.date(2026,11,3), dt.date(2026,11,3))
 s = login()
 os.makedirs('/tmp/ph', exist_ok=True)
 for _, r in v[v['#'].astype(int).isin(ids)].iterrows():
