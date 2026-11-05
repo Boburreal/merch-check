@@ -1,5 +1,6 @@
 // Cloudflare Worker (free): exact-time scheduler + Telegram webhook for @inforuz_bot.
-// Secrets (Settings -> Variables and Secrets): GH_TOKEN, TG_BOT_TOKEN, SALES_LOGIN, SALES_PASSWORD.
+// Secrets (Settings -> Variables and Secrets): GH_TOKEN, TG_BOT_TOKEN, SALES_LOGIN, SALES_PASSWORD, BAZA_BOT_TOKEN.
+// Second bot (BAZA_BOT_TOKEN): branch requests in the "Sales ASKLEPIY" group -> baza.yml on GitHub.
 // Cron trigger: */5 * * * *
 // Heavy work (screenshot reading, 3-month visit history) runs on GitHub Actions;
 // ticking people, the analytics and deleting a location run here, in seconds.
@@ -33,6 +34,26 @@ function jobs(d) {
 async function secret(env) {
   const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("hook|" + env.TG_BOT_TOKEN));
   return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 40);
+}
+
+async function bazaSecret(env) {
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("baza|" + env.BAZA_BOT_TOKEN));
+  return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 40);
+}
+
+// group message -> what baza.py should do with it (null = not ours, nothing is started)
+function bazaSlim(env, u) {
+  const m = u.message;
+  if (!m || !m.from || m.from.is_bot) return null;
+  const text = (m.text || m.caption || "").slice(0, 3000);
+  const base = { chat: m.chat.id, mid: m.message_id, from_id: m.from.id, first: m.from.first_name || "",
+                 last: m.from.last_name || "", text };
+  if (m.chat.type === "private") return { kind: "private", ...base };
+  const botId = String(env.BAZA_BOT_TOKEN || "").split(":")[0];
+  const r = m.reply_to_message;
+  if (r && r.from && String(r.from.id) === botId) return { kind: "reply", reply_mid: r.message_id, ...base };
+  if (/(^|\D)\d{9}(\D|$)/.test(text) && /(inn|инн|stir|стир|filial|филиал|фил|fil)/i.test(text)) return { kind: "request", ...base };
+  return null;
 }
 
 function slim(u) {
@@ -278,6 +299,14 @@ export default {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: `${url.origin}/tg`, secret_token: sec, allowed_updates: ["message", "callback_query"] }),
       }).then((r) => r.json());
+      let baza = "kalit qo'shilmagan";
+      if (env.BAZA_BOT_TOKEN) {
+        const b = await fetch(`https://api.telegram.org/bot${env.BAZA_BOT_TOKEN}/setWebhook`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: `${url.origin}/baza`, secret_token: await bazaSecret(env), allowed_updates: ["message"] }),
+        }).then((r) => r.json());
+        baza = b.ok ? "OK ✅" : "XATO ❌ " + b.description;
+      }
       const gh = await dispatch(env, "snapshot.yml", {});
       let sales = "kalit qo'shilmagan";
       if (env.SALES_LOGIN && env.SALES_PASSWORD) {
@@ -286,13 +315,20 @@ export default {
       return new Response(
         `Telegram: ${tg.ok ? "OK ✅" : "XATO ❌ " + tg.description}\n` +
         `GitHub: ${gh === 204 ? "OK ✅" : "XATO ❌ (" + gh + ") - tokenni tekshiring"}\n` +
-        `Sales: ${sales}\n`,
+        `Sales: ${sales}\n` +
+        `Baza bot: ${baza}\n`,
         { headers: { "Content-Type": "text/plain; charset=utf-8" } });
     }
     // self-test from GitHub Actions: reads the edit form, changes nothing
     if (url.pathname === "/selftest" && url.searchParams.get("k") === sec) {
       const r = await deleteLocation(env, Number(url.searchParams.get("id")), true);
       return json(r);
+    }
+    if (url.pathname === "/baza" && req_.method === "POST" && env.BAZA_BOT_TOKEN) {
+      if (req_.headers.get("X-Telegram-Bot-Api-Secret-Token") !== (await bazaSecret(env))) return new Response("forbidden", { status: 403 });
+      const s = bazaSlim(env, await req_.json());
+      if (s) ctx.waitUntil(dispatch(env, "baza.yml", { update: JSON.stringify(s) }));
+      return new Response("ok");
     }
     if (url.pathname === "/tg" && req_.method === "POST") {
       if (req_.headers.get("X-Telegram-Bot-Api-Secret-Token") !== sec) return new Response("forbidden", { status: 403 });
