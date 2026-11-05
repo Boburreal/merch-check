@@ -1,30 +1,34 @@
-"""Read-only probe of the add_company wizard: only the 'next' (INN check) step is called, nothing is saved."""
-import re, html, json
-from bs4 import BeautifulSoup
-from sales import login, BASE
+"""Read-only probe: add_company step-2 HTML (nothing saved) + users list -> encrypted drop for Claude."""
+import re, html, json, os, base64, hashlib
+from cryptography.fernet import Fernet
+from sales import login, BASE, current_project
 
 s = login()
-for inn in ('309877286', '309877286-1'):
-    r = s.get(BASE + "/lists/companies/add_company", timeout=60)
-    csrf = re.search(r'data-csrf="([^"]+)"', r.text).group(1)
-    upd = re.search(r'data-update-uri="([^"]+)"', r.text).group(1)
-    snap = next(html.unescape(x) for x in re.findall(r'wire:snapshot="([^"]+)"', r.text)
-                if '"step":"inn"' in html.unescape(x))
-    name = json.loads(snap)['memo']['name']
-    body = {"_token": csrf, "components": [{"snapshot": snap, "updates": {"inn": inn}, "calls": [{"path": "", "method": "next", "params": []}]}]}
-    x = s.post(upd, json=body, timeout=120, headers={"X-Livewire": "true", "Content-Type": "application/json",
-                                                     "X-CSRF-TOKEN": csrf, "Referer": BASE + "/lists/companies/add_company"})
-    j = x.json()['components'][0]
-    data = json.loads(j['snapshot'])['data']
-    soup = BeautifulSoup(j['effects'].get('html', ''), 'lxml')
-    els = []
-    for e in soup.find_all(['input', 'select', 'textarea', 'button']):
-        wm = next((v for k, v in e.attrs.items() if k.startswith('wire:model')), '')
-        wc = next((f"{k}={v}" for k, v in e.attrs.items() if k.startswith('wire:click')), '')
-        lab = e.find_previous('label')
-        o = ''
-        if e.name == 'select':
-            op = e.find_all('option'); o = f"[{len(op)}: " + "; ".join(z.get_text(strip=True) for z in op[:5]) + "]"
-        els.append(f"{e.name}:{wm or e.get('name', '')}{(' '+wc) if wc else ''} '{lab.get_text(' ', strip=True)[:30] if lab else ''}'{o}")
-    print(f"::notice::{name} INN {inn} [{x.status_code}] step={data.get('step')} keys={list(data)} text={soup.get_text(' ', strip=True)[:500]}")
-    print(f"::notice::INN {inn} fields={json.dumps(data.get('fields'), ensure_ascii=False)[:900]} els={' | '.join(els)[:1500]}")
+out = {"project": current_project(s)}
+r = s.get(BASE + "/lists/companies/add_company", timeout=60)
+csrf = re.search(r'data-csrf="([^"]+)"', r.text).group(1)
+upd = re.search(r'data-update-uri="([^"]+)"', r.text).group(1)
+snap = next(html.unescape(x) for x in re.findall(r'wire:snapshot="([^"]+)"', r.text) if '"step":"inn"' in html.unescape(x))
+H = {"X-Livewire": "true", "Content-Type": "application/json", "X-CSRF-TOKEN": csrf, "Referer": BASE + "/lists/companies/add_company"}
+x = s.post(upd, json={"_token": csrf, "components": [{"snapshot": snap, "updates": {"inn": "309877286-1"}, "calls": [{"path": "", "method": "next", "params": []}]}]}, headers=H, timeout=120).json()
+c = x["components"][0]
+out["step2_html"] = c["effects"].get("html", "")
+out["step2_snapshot"] = c["snapshot"]
+out["page_html"] = r.text
+# users list
+u = s.get(BASE + "/lists/users", timeout=60)
+out["users_page"] = u.text[-20000:]
+tok = re.search(r"'X-CSRF-TOKEN':\s*'([^']+)'", u.text)
+heads = [re.sub(r'<[^>]+>|\s+', ' ', h).strip() for h in re.findall(r'<th[^>]*>(.*?)</th>', u.text, re.S)]
+out["users_heads"] = heads
+if tok:
+    data = {"draw": 1, "start": 0, "length": 3000, "search[value]": "", "search[regex]": "false"}
+    for i in range(len(heads)):
+        data[f"columns[{i}][data]"] = i
+    out["users"] = s.post(BASE + "/lists/users", data=data, timeout=300, headers={"X-CSRF-TOKEN": tok.group(1),
+                          "X-Requested-With": "XMLHttpRequest", "Accept": "application/json"}).json()
+k = os.environ["ROSTER_KEY"].encode()
+f = Fernet(base64.urlsafe_b64encode(hashlib.sha256(k).digest()))
+os.makedirs("drop", exist_ok=True)
+open("drop/baza_probe.fer", "wb").write(f.encrypt(json.dumps(out, ensure_ascii=False).encode()))
+print(f"::notice::probe ok users={len(out.get('users', {}).get('data', []))} heads={heads}")
