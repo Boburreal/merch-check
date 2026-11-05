@@ -46,7 +46,7 @@ def to_bobur(text):
 
 
 def esc(s):
-    return H.escape(str(s or ""))
+    return H.escape(str(s or ""), quote=False)
 
 
 # ------------------------------------------------------------------ parsing the request
@@ -258,7 +258,8 @@ def plan(s, users, req, item):
     st, main, raw = lookup(s, inn)
     p = {"inn": inn, "asked_name": item["name"], "n": n}
     if st != "found":
-        p["status"] = "no_main"
+        p["status"], p["step"] = "no_main", st
+        print(f"::warning::INN {inn}: step={st} data={json.dumps({k: v for k, v in raw.items() if k != 'fields'}, ensure_ascii=False)[:800]}")
         return p
     p["main_name"] = main.get("name") or item["name"]
     p["region_id"] = main.get("region_id")
