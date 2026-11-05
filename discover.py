@@ -1,30 +1,28 @@
-"""Read-only probe 3: /ajax/search lists (categories, pharm users per category, regions) in both projects."""
+"""Read-only probe 4: naming of existing branch cards (INN with -N) and the users list of both projects."""
 import re, json, os, base64, hashlib
 from cryptography.fernet import Fernet
 from sales import login, switch_project, restore, BASE
+from companies import fetch_companies
 
-s = login()
 out = {}
-def search(model, field="name", flt=None, q=""):
-    res, page = [], 1
-    while page < 40:
-        p = {"q": q, "page": page, "model": model, "field": field, "location": "/lists/companies/add_company"}
-        if flt is not None:
-            p["filter"] = json.dumps(flt)
-        j = s.get(BASE + "/ajax/search", params=p, timeout=60, headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"}).json()
-        d = j.get("data", [])
-        res += d
-        if not d or not (j.get("next_page_url") or (j.get("current_page", 0) < j.get("last_page", 0))):
-            break
-        page += 1
-    return res
+for p in (1, 4):
+    c = fetch_companies(p)
+    c = c.iloc[:, :9]
+    c.columns = ['_sel', 'ID', 'Название', 'Инн', 'Регион', 'Район', 'Локация', 'Фарм. пред', 'Сеть']
+    b = c[c['Инн'].astype(str).str.contains(r'\d-\d|\(|[A-Za-zА-Яа-я]', regex=True)]
+    out[f"p{p}_branches"] = b.drop(columns=['_sel', 'Локация']).astype(str).to_dict('records')
+    out[f"p{p}_names_tp_mp"] = c[c['Название'].astype(str).str.contains(r'\((?:ТП|МП|TP|MP)\)', regex=True)].drop(columns=['_sel', 'Локация']).astype(str).to_dict('records')
+s = login()
 for p in (1, 4):
     switch_project(s, p)
-    cats = search("App\\Models\\Category")
-    out[f"p{p}_cats"] = cats
-    out[f"p{p}_users"] = {str(c["id"]): search("App\\Models\\User", flt=[["pharm"], ["category_id", "=", str(c["id"])]]) for c in cats}
-    out[f"p{p}_regions"] = search("App\\Models\\Region")
+    u = s.get(BASE + "/lists/users", timeout=60)
+    tok = re.search(r"'X-CSRF-TOKEN':\s*'([^']+)'", u.text).group(1)
+    data = {"draw": 1, "start": 0, "length": 3000, "search[value]": "", "search[regex]": "false"}
+    for i in range(17):
+        data[f"columns[{i}][data]"] = i
+    out[f"p{p}_users"] = s.post(BASE + "/lists/users", data=data, timeout=300, headers={"X-CSRF-TOKEN": tok,
+                                "X-Requested-With": "XMLHttpRequest", "Accept": "application/json"}).json().get("data", [])
 restore(s)
 k = os.environ["ROSTER_KEY"].encode()
-open("drop/baza_probe3.fer", "wb").write(Fernet(base64.urlsafe_b64encode(hashlib.sha256(k).digest())).encrypt(json.dumps(out, ensure_ascii=False).encode()))
-print("::notice::probe3 " + " ".join(f"{k}={len(v)}" for k, v in out.items()))
+open("drop/baza_probe4.fer", "wb").write(Fernet(base64.urlsafe_b64encode(hashlib.sha256(k).digest())).encrypt(json.dumps(out, ensure_ascii=False).encode()))
+print("::notice::probe4 " + " ".join(f"{k}={len(v)}" for k, v in out.items()))
