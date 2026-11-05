@@ -17,8 +17,22 @@ def login() -> requests.Session:
     return s
 
 
+_ORIG = None
+
+
+def restore(s: requests.Session):
+    """Put the account back on the project it was on before our job switched it (Bobur may be working in it)."""
+    switch_project(s, int(_ORIG or 1))
+
+
 def switch_project(s: requests.Session, project_id: int):
-    """Same as choosing a project in the left-bottom dropdown."""
+    """Same as choosing a project in the left-bottom dropdown. The choice is stored on the account (Bobur sees it)."""
+    global _ORIG
+    if _ORIG is None:
+        try:
+            _ORIG = current_project(s) or "1"
+        except Exception:
+            _ORIG = "1"
     import html, json
     r = s.get(f"{BASE}/visits/reports", timeout=120)
     csrf = re.search(r'data-csrf="([^"]+)"', r.text).group(1)

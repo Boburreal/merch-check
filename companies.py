@@ -63,8 +63,8 @@ def _fetch_companies(project: int = 1) -> pd.DataFrame:
             df = pd.DataFrame([[_clean(v) for v in r] for r in rows])
         return df
     finally:
-        if project != 1:
-            switch_project(s, 1)
+        if str(project) != str(__import__("sales")._ORIG or 1):
+            __import__("sales").restore(s)
 
 
 if __name__ == "__main__":

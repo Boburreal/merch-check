@@ -288,7 +288,7 @@ def delete_location(cid: int):
                 return res
         return '', '', "failed (аптеканинг таҳрирлаш саҳифаси очилмади — ТП ва МП лойиҳаларида ҳам)"
     finally:
-        switch_project(s, 1)
+        __import__("sales").restore(s)
 
 
 def _delete_in(s, cid: int):
