@@ -281,8 +281,10 @@ if __name__ == "__main__":
         import json, roster as R
         from sales import login, switch_project
         wb = load_file(); ws = wb.active
-        TP = ("Transcribe this pharmacy visit recording (Uzbek/Russian) as plain text, speaker turns marked R: (sales rep) "
-              "and P: (pharmacist/other). If there is no speech write [no speech]. Return ONLY JSON {\"transcript\": \"...\"}")
+        TP = ("Listen to this whole pharmacy visit recording (Uzbek or Russian speech; there may be street/shop noise). "
+              "First write a faithful transcript with speaker turns R: (sales rep) and P: (pharmacist/other); mark unclear parts [...]; "
+              "write [no speech] only if nobody talks at all. Then, ONLY from that transcript, write the manager comment:\n" + PROMPT.split("Write the manager's check comment in Uzbek Cyrillic, in exactly this style:")[1].split("Return ONLY JSON")[0] +
+              'Return ONLY JSON {"transcript": "...", "comment": "...", "speech_seconds": number}')
         s_ = login(); switch_project(s_, 1)
         out = []
         for row in ws.iter_rows(min_row=1):
@@ -298,7 +300,8 @@ if __name__ == "__main__":
                     data = s_.get(url, timeout=120).content
                     with tempfile.NamedTemporaryFile(suffix='.' + ext) as f:
                         f.write(data); f.flush(); rec['m'] = audio.measure(f.name)
-                    rec['t'] = audio.ai(data, audio.MIME.get(ext, 'audio/aac'), TP).get('transcript', '')
+                    a = audio.ai(data, audio.MIME.get(ext, 'audio/aac'), TP)
+                    rec['t'] = a.get('transcript', ''); rec['c2'] = a.get('comment', ''); rec['sp'] = a.get('speech_seconds')
             except Exception as e:
                 rec['err'] = str(e)[:150]
             out.append(rec)

@@ -5,6 +5,7 @@ on:
       from: {description: "YYYY-MM-DD", default: ""}
       to: {description: "YYYY-MM-DD", default: ""}
       mode: {description: "bo'sh / split / review", default: ""}
+      model: {description: "Gemini model (bo'sh = avtomatik)", default: ""}
 permissions:
   contents: write
 jobs:
@@ -19,6 +20,7 @@ jobs:
       - run: python az.py
         env:
           AZ_MODE: ${{ inputs.mode }}
+          GEMINI_MODEL: ${{ inputs.model }}
           AZ_FROM: ${{ inputs.from }}
           AZ_TO: ${{ inputs.to }}
           SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
