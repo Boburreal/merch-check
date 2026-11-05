@@ -9,9 +9,14 @@ s = login()
 out = []
 for p in (1, 4):
     switch_project(s, p)
-    r = s.get(BASE + "/lists/companies/create", timeout=60)
+    lst = s.get(BASE + "/lists/companies", timeout=60).text
+    adds = sorted(set(re.findall(r'href="([^"]*companies[^"]*(?:create|add|new)[^"]*)"', lst)))
+    out.append(f"P{p} add links: {adds}")
+    url = adds[0] if adds else BASE + "/lists/companies/create"
+    url = url if url.startswith("http") else BASE + url
+    r = s.get(url, timeout=60)
     soup = BeautifulSoup(r.text, "lxml")
-    f = soup.find("form", attrs={"enctype": True}) or soup.find_all("form")[-1]
+    f = soup.find("main") or soup.find("div", class_=re.compile("content")) or soup.body
     fl = []
     for el in f.find_all(["input", "select", "textarea"]):
         n = el.get("name") or el.get("wire:model") or el.get("id")
@@ -27,7 +32,7 @@ for p in (1, 4):
             extra = f"[{len(opts)}: " + "; ".join(o.get_text(strip=True) for o in opts[:6]) + "]"
         req = '*' if el.has_attr('required') else ''
         fl.append(f"{n}{req}({el.name}/{el.get('type','')}){'='+lab if lab else ''}{extra}")
-    out.append(f"P{p} create [{r.status_code}] action={f.get('action')} fields: " + " | ".join(fl))
+    out.append(f"P{p} create [{r.status_code}] url={r.url} forms={len(soup.find_all('form'))} wire={sorted(set(re.findall(r'wire:model[.a-z]*="([^"]+)"', r.text)))[:40]} fields: " + " | ".join(fl))
     tok = re.search(r"'X-CSRF-TOKEN':\s*'([^']+)'", s.get(BASE + "/lists/companies", timeout=60).text).group(1)
     for inn in INNS:
         data = {"draw": 1, "start": 0, "length": 50, "search[value]": inn, "search[regex]": "false"}
@@ -40,5 +45,4 @@ for p in (1, 4):
         out.append(f"P{p} INN {inn}: {len(rows)} -> " + " ;; ".join(
             " / ".join(txt(v) for k, v in (r.items() if isinstance(r, dict) else enumerate(r)) if k not in ('action', 0, '_sel', 'location')) for r in rows)[:600])
 restore(s)
-print("::notice::" + "\n".join(out[:2]))
-print("::notice::" + "\n".join(out[2:]))
+for o in out: print("::notice::" + o[:1500])
