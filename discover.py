@@ -14,3 +14,10 @@ for _, r in v[v['#'].astype(int).isin(ids)].iterrows():
 print("::notice::saved " + str(sorted(os.listdir('/tmp/ph'))))
 m = store.load('m_2026-11-03')
 print("::notice::cols " + str(list(m.columns)))
+
+import io, tarfile, roster as R
+b = io.BytesIO()
+with tarfile.open(fileobj=b, mode='w:gz') as t:
+    t.add('/tmp/ph', arcname='ph')
+os.makedirs('drop', exist_ok=True)
+open('drop/photos.fer', 'wb').write(R._fernet().encrypt(b.getvalue()))
