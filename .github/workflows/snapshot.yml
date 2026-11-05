@@ -1,7 +1,6 @@
 name: Apteka lokatsiya surati (har soat)
 on:
-  schedule:
-    - cron: "5 * * * *"
+  # hourly run is started by the Cloudflare Worker
   workflow_dispatch:
 permissions:
   contents: write

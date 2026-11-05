@@ -23,7 +23,7 @@ function jobs(d) {
   const h = d.getUTCHours(), m = d.getUTCMinutes(), wd = d.getUTCDay(), md = d.getUTCDate();
   const out = [];
   if (m === 5) out.push(["snapshot.yml", {}]);                                           // har soat
-  if (h === 12 && m === 30) out.push(["report.yml", { mode: "daily", auto: "1" }]);      // 17:30
+  if (h === 12 && m === 5) out.push(["report.yml", { mode: "daily", auto: "1" }]);       // 17:05 -> fayl 17:45–17:55
   if (h === 3 && m === 30) out.push(["report.yml", { mode: "update", auto: "1" }]);      // 08:30
   if (wd === 0 && h === 18 && m === 0) out.push(["report.yml", { mode: "weekly", auto: "1" }]);  // yakshanba 23:00
   if (md === 1 && h === 4 && m === 0) out.push(["report.yml", { mode: "monthly", auto: "1" }]);  // 1-sana 09:00
