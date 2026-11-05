@@ -63,7 +63,8 @@ def ask_ai(model: str, data: bytes, mime: str, prompt: str = None) -> dict:
             "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}}
     wait = 20
     for attempt in range(5):
-        r = requests.post(f"{merch.API}/models/{model}:generateContent", headers={"x-goog-api-key": merch.GEMINI_KEY},
+        _name, _key = merch.split(model)
+        r = requests.post(f"{merch.API}/models/{_name}:generateContent", headers={"x-goog-api-key": _key},
                           json=body, timeout=240)
         if r.status_code in (403, 404) or (r.status_code == 429 and ("PerDay" in r.text or "per day" in r.text.lower())):
             raise merch.DailyQuotaExceeded(f"{model}: {r.status_code}")

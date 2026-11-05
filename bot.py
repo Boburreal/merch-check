@@ -56,7 +56,9 @@ def read_screenshot(file_id) -> dict:
               '"date": message date if visible, "request": short summary of what is asked}. Use "" when absent.')
     body = {"contents": [{"parts": [{"text": prompt}, _img_part(shrink(img, 1600))]}],
             "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}}
-    r = requests.post(f"{GAPI}/models/{pick_model()}:generateContent", headers={"x-goog-api-key": GEMINI_KEY},
+    from merch import split
+    _name, _key = split(pick_model())
+    r = requests.post(f"{GAPI}/models/{_name}:generateContent", headers={"x-goog-api-key": _key},
                       json=body, timeout=120)
     r.raise_for_status()
     txt = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip().removeprefix("```json").removesuffix("```")

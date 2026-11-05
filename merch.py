@@ -16,6 +16,15 @@ def shrink(data: bytes, side: int = 1024) -> bytes:
         return data
 
 GEMINI_KEY = os.environ["GEMINI_API_KEY"]
+# several free keys (different Google accounts) = several free daily limits; a model id may carry "@<key index>"
+KEYS = [k for k in (os.environ.get("GEMINI_API_KEY", ""), os.environ.get("GEMINI_API_KEY_2", ""),
+                    os.environ.get("GEMINI_API_KEY_3", "")) if k.strip()]
+
+
+def split(model: str):
+    """'gemini-x@1' -> ('gemini-x', second key)."""
+    name, _, i = str(model).partition("@")
+    return name, KEYS[int(i)] if i.isdigit() and int(i) < len(KEYS) else GEMINI_KEY
 API = "https://generativelanguage.googleapis.com/v1beta"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -78,13 +87,14 @@ def _models():
     # Probe once: skip models that are overloaded (503) or retired right now, so no thread waits on them.
     ok = []
     for m in lite + full:
-        try:
-            x = requests.post(f"{API}/models/{m}:generateContent", headers={"x-goog-api-key": GEMINI_KEY}, timeout=60,
-                              json={"contents": [{"parts": [{"text": "OK"}]}], "generationConfig": {"maxOutputTokens": 2}})
-            if x.status_code == 200:
-                ok.append(m)
-        except requests.RequestException:
-            pass
+        for ki, key in enumerate(KEYS):
+            try:
+                x = requests.post(f"{API}/models/{m}:generateContent", headers={"x-goog-api-key": key}, timeout=60,
+                                  json={"contents": [{"parts": [{"text": "OK"}]}], "generationConfig": {"maxOutputTokens": 2}})
+                if x.status_code == 200:
+                    ok.append(f"{m}@{ki}")
+            except requests.RequestException:
+                pass
     print(f"::notice::gemini models available: {ok}")
     return ok
 
@@ -144,8 +154,9 @@ def _ask(model: str, photos: list[bytes]) -> dict:
     wait = 20
     for attempt in range(6):
         STATS["requests"] += 1
-        r = requests.post(f"{API}/models/{model}:generateContent",
-                          headers={"x-goog-api-key": GEMINI_KEY}, json=body, timeout=180)
+        _name, _key = split(model)
+        r = requests.post(f"{API}/models/{_name}:generateContent",
+                          headers={"x-goog-api-key": _key}, json=body, timeout=180)
         if r.status_code in (403, 404):        # model retired / not available for this key -> next model
             raise DailyQuotaExceeded(f"{model}: HTTP {r.status_code}")
         if r.status_code == 429 and ("PerDay" in r.text or "per day" in r.text.lower()):

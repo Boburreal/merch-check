@@ -26,6 +26,7 @@ jobs:
           SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
           SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           ROSTER_KEY: ${{ secrets.ROSTER_KEY }}
       - if: always()

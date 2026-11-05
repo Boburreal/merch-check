@@ -19,5 +19,6 @@ jobs:
       - run: python test_run.py
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           GEMINI_MODEL: ${{ inputs.model }}
