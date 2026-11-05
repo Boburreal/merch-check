@@ -176,6 +176,32 @@ except Exception as e:
 tp = enrich(tp, 'ТП', tp_people, comp, 'ТП')
 mp = enrich(mp, 'МП', mp_people, comp, 'МП')
 print(f"::notice::{MODE} {f1}..{d2} tp={len(tp)} mp={len(mp)}")
+if MODE == "recheck":                   # re-check visits where only the counter (no vitrina) was seen
+    import merch as _M
+    models = alive_models()
+    n = fixed = 0
+    for day in sorted({x.date() for x in tp.day}):
+        m = store.load(f"m_{day.isoformat()}")
+        if not len(m):
+            continue
+        m['id'] = m['id'].astype(int)
+        ids = set(m[(m['category'] == 'merch') & (pd.to_numeric(m['vitrina'], errors='coerce') == 0)]['id'])
+        part = tp[tp.id.isin(ids)]
+        for i, (_, r) in enumerate(part.iterrows()):
+            try:
+                res = check_visit(models[i % len(models)], r['Фото 1'], r['Фото 2'])
+            except Exception as e:
+                print("::warning::recheck " + str(e)[:100]); continue
+            n += 1
+            if res['category'] != 'error':
+                k = m['id'] == r['id']
+                if int(res['vitrina']) != 0:
+                    fixed += 1
+                m.loc[k, ['category', 'vitrina', 'kassa', 'comment', 'raw']] = [res['category'], res['vitrina'], res['kassa'],
+                                                                              comment(res.get('raw')), json.dumps(res.get('raw'), ensure_ascii=False)]
+        store.save(f"m_{day.isoformat()}", m)
+    print(f"::notice::recheck {d1}..{d2}: rechecked={n} vitrina_found_now={fixed}")
+    raise SystemExit(0)
 if MODE == "merch":                     # only check merch photos of earlier days (no report)
     START = time.time(); MERCH_MIN = int(os.environ.get("BACKLOG_MINUTES", "300"))
     for back in sorted({x.date() for x in tp.day}, reverse=True):
