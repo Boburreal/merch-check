@@ -71,7 +71,7 @@ def alive_models():
     import merch as M
     first = pick_model()
     rest = [m for m in M._CHAIN if m not in M._DEAD and m != first]
-    return [first] + rest[:3]
+    return [first] + rest[:7]
 
 
 def merch_for_day(day: dt.date, tp: pd.DataFrame) -> pd.DataFrame:
