@@ -8,6 +8,15 @@ import datetime as dt, json, os, time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from zoneinfo import ZoneInfo
 import pandas as pd
+import sys as _sys, traceback as _tb
+
+
+def _hook(t, v, tb):                     # errors are visible in the run annotations (logs are not readable)
+    print("::error::" + "".join(_tb.format_exception(t, v, tb))[-900:].replace(chr(10), " | "))
+    _sys.__excepthook__(t, v, tb)
+
+
+_sys.excepthook = _hook
 
 from export import fetch
 from analysis import prepare
@@ -185,6 +194,8 @@ if MODE == "recheck":                   # re-check visits where only the counter
         if not len(m):
             continue
         m['id'] = m['id'].astype(int)
+        if 'pv' not in m:
+            m['pv'] = ''
         vv = pd.to_numeric(m['vitrina'], errors='coerce').fillna(0)
         kk = pd.to_numeric(m['kassa'], errors='coerce').fillna(0)
         done2 = m['pv'].astype(str).eq('2') if 'pv' in m else pd.Series(False, index=m.index)
