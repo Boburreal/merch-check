@@ -20,7 +20,7 @@ CAT = {'merch': 'Мерч бор', 'none': 'Мерч йўқ', 'suspicious': 'Ш�
        'error': 'Текширилмади'}
 SHORT = {'gap': 'тез ёпилган', 'loc': 'локацияси ўзгарган аптека', 'photo': 'фото йўқ', 'same': 'фото1=фото2',
          'reuse': 'фото қайта ишлатилган', 'dup': 'такрорий визит', 'hours': 'иш вақтидан ташқари',
-         'region_out': 'бошқа ҳудуддаги аптека', 'cluster': 'бир нуқтада 5+ аптека', 'multi': 'аптекага 3+ ТП',
+         'region_out': 'бошқа ҳудуддаги аптека', 'cluster': 'бир нуқтада 7+ аптека', 'multi': 'аптекага 3+ ТП',
          'over7': 'бир аптекага 7+ визит', 'closeup': 'мерч фото яқин план'}
 
 
@@ -205,37 +205,9 @@ def build(path, month_title, tp, merch, seed, people, loc_changes):
         ws.column_dimensions[get_column_letter(j)].width = w
     ws.freeze_panes = 'A2'; ws.auto_filter.ref = ws.dimensions
 
-    # ---------- Аптека муаммолари ----------
-    ws = wb.create_sheet('Аптека муаммолари')
-    cols = ['Аптека', 'Муаммо', 'ТП (лар)', 'Визитлар сони', 'Изоҳ']
-    _hdr(ws, 1, cols)
-    rows = []
-    for k, title in [('region_out', 'Бошқа ҳудуддаги аптека'), ('cluster', 'Бир нуқтада 5+ аптека'),
-                     ('multi', '3+ ТП борган'), ('over7', '7+ визит'), ('loc', 'Локацияси ўзгарган')]:
-        if 'f_' + k not in tpx:
-            continue
-        for obj, g in tpx[tpx['f_' + k]].groupby('Контр-агент/Врач'):
-            note = g['Изоҳ'].str.split('; ').explode()
-            note = note[note.str.contains({'region_out': 'координатаси', 'cluster': 'бир нуқтада', 'multi': 'та ТП борган',
-                                           'over7': 'марта визит', 'loc': 'локацияси ўзгартирилган'}[k])]
-            rows.append([obj, title, ", ".join(sorted(g['ТП'].unique())), len(g), note.iloc[0] if len(note) else ''])
-    for i, row in enumerate(sorted(rows, key=lambda r: (r[1], -r[3])), 2):
-        for j, val in enumerate(row, 1):
-            ws.cell(i, j, val)
-    for j, w in enumerate([45, 24, 50, 12, 90], 1):
-        ws.column_dimensions[get_column_letter(j)].width = w
-    ws.freeze_panes = 'A2'; ws.auto_filter.ref = ws.dimensions
-
-    # ---------- Локация ўзгаришлари ----------
-    if loc_changes is not None and len(loc_changes):
-        ws = wb.create_sheet('Локация ўзгаришлари')
-        _hdr(ws, 1, list(loc_changes.columns))
-        for i, row in enumerate(loc_changes.itertuples(index=False), 2):
-            for j, val in enumerate(row, 1):
-                ws.cell(i, j, val)
-        for j in range(1, len(loc_changes.columns) + 1):
-            ws.column_dimensions[get_column_letter(j)].width = 20
-        ws.column_dimensions['D'].width = 40; ws.column_dimensions['G'].width = 45
+    # ---------- аптекага визитлар (Bobur 06.11: ўрнига локация текширувлари олиб ташланди) ----------
+    import ph_sheets
+    ph_sheets.write(wb, tpx, 'ТП')
 
     # ---------- Изоҳ ----------
     ws = wb.create_sheet('Изоҳ')
@@ -246,8 +218,10 @@ def build(path, month_title, tp, merch, seed, people, loc_changes):
              '  иккаласи БИТТА расмда; Витрина — витринада/полкада, Касса — касса олдида. Яқин план (аптека кўринмайди) — мерчга қўшилмайди.',
              '  26.10.2026 гача бўлган кунлар учун мерч сизнинг файлингиздан (қўлда киритилган) олинган.',
              'Шубҳа белгилари: тез ёпилган (≤1 дақ), фото йўқ/бир хил/қайта ишлатилган, такрорий визит, иш вақтидан ташқари,',
-             '  аптека локацияси ўзгартирилган (ҳар соатлик кузатув), аптека координатаси ТП ишлайдиган ҳудуддан ташқарида,',
-             '  бир нуқтада 5+ аптека, бир ойда аптекага 3+ ТП, бир ТП бир аптекага ойда 7 тадан кўп.',
+             '  аптека бир нуқтада яна 6+ аптека билан (базадаги локацияси ~10 м ичида, жами 7+).',
+             '«ТП × аптека» — ҳар бир ТП ҳар бир аптекага неча марта борган (саналари билан).',
+             '«Аптека × ТП» — ҳар бир аптекага нечта ва қайси ТП борган.',
+             '«Бир нуқтада 7+ аптека» — базадаги локацияси бир нуқтада бўлган 7+ аптекадан визит қилинганлари ва ким борган.',
              'Ҳар бир ҳолат хотирада сақланади; такрорланса изоҳда «такрорий» деб олдинги саналари билан ёзилади.']
     for t in lines:
         ws.append([t])
