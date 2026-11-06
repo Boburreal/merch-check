@@ -159,11 +159,12 @@ def load_people():
 
 
 d1, d2, title = period()
-try:
-    locations.snapshot()          # fresh pharmacy-location snapshot so today's changes are in the log
-except Exception as e:
-    print(f"::warning::snapshot failed: {str(e)[:150]}")
-loc_log = store.load('loc_log')
+if MODE == "update":                # pharmacy coordinates (for "7+ pharmacies at one point") - once a day, in the morning
+    try:
+        locations.snapshot()
+    except Exception as e:
+        print(f"::warning::snapshot failed: {str(e)[:150]}")
+loc_log = pd.DataFrame()             # Bobur 06.11: location-change checks are not needed
 comp = store.load('companies_last')
 tp_people, mp_people, seed = load_people()
 

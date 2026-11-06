@@ -125,7 +125,7 @@ def snapshot():
     if len(ch):
         log = store.load('loc_log')
         store.save('loc_log', pd.concat([log, ch.astype(str)], ignore_index=True) if len(log) else ch)
-    alert_reset(ch)
+    # alert_reset(ch)  - Bobur 06.11: location-change alerts not needed
     store.save('companies_last', cur)
     store.save('companies_meta', pd.DataFrame({'time': [now]}))
     print(f"::notice::snapshot {now}: companies={len(cur)} with_coords={cur.lat.notna().sum()} changes={len(ch)}"
