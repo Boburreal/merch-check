@@ -235,7 +235,7 @@ if MODE in ("daily", "update"):
     START = time.time()                 # the merch budget starts now (export/snapshot time does not count)
     if MODE == "daily" and AUTO:        # Bobur wants the evening file by 17:45-17:55: stop checking merch at 17:47
         left = (dt.datetime.combine(now.date(), dt.time(17, 47), TZ) - dt.datetime.now(TZ)).total_seconds() / 60
-        MERCH_MIN = max(2, min(MERCH_MIN, int(left)))
+        MERCH_MIN = max(12, min(MERCH_MIN, int(left)))   # started late: still check merch, a file without it is useless
         print(f"::notice::merch budget {MERCH_MIN} min (deadline 17:47)")
     merch_for_day(d2, tp)
 merch = stored_merch(f1, d2)
@@ -316,7 +316,7 @@ if AUTO:
     _row = pd.DataFrame({'key': [SENT_KEY]})
     store.save('sent', pd.concat([_sent, _row]).tail(400) if len(_sent) else _row)
 print("::notice::telegram=sent")
-if MODE == "update":                    # Аудиозаписи file: yesterday's block (6 ТП x 2 recordings)
+if MODE in ("daily", "update"):         # Аудиозаписи: the day's block (daily adds today's, update refills / adds yesterday's)                    # Аудиозаписи file: yesterday's block (6 ТП x 2 recordings)
     try:
         import az
         az.run([d2])
