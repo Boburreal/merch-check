@@ -15,7 +15,7 @@ norm = lambda s: re.sub(r'\s+', ' ', re.sub(r'\([^()]*\)\s*$', '', str(s))).stri
 comp = []
 for p in (1, 4):
     c = fetch_companies(p)
-    print(f"::notice::companies p{p}: rows={len(c)} cols={list(c.columns)}")
+    print(f"::notice::dates sample") if False else print(f"::notice::companies p{p}: rows={len(c)} cols={list(c.columns)}")
     c['project'] = 'ТП' if p == 1 else 'МП'
     comp.append(c)
 c = pd.concat(comp, ignore_index=True)
@@ -50,11 +50,12 @@ for grp in ('tp', 'mp'):
     x['grp'] = 'ТП' if grp == 'tp' else 'МП'
     v.append(x)
 V = pd.concat(v, ignore_index=True)
+print(f"::notice::visits={len(V)} date sample={V['Дата'].astype(str).head(3).tolist()} rep sample={V['Фарм. пред'].astype(str).head(2).tolist()}")
 V = V[V['Тип визита'].fillna('').str.contains('аптек', case=False)]
-V['obj'] = V['Контр-агент/Врач'].map(norm)
+V['obj'] = V['Контр-агент/Врач'].map(norm)   # visit name = '<pharmacy> (<region>)'
 V['rep'] = V['Фарм. пред'].astype(str).str.replace(r'\s*\([^()]*\)\s*$', '', regex=True).str.strip()
 vis = V.groupby('obj').size()
-C['obj'] = C['Аптека'].map(norm)
+C['obj'] = C['Аптека'].map(lambda s: re.sub(r'\s+', ' ', str(s)).strip().lower())
 C['Визит (2 ой)'] = C['obj'].map(vis).fillna(0).astype(int)
 C['Ходимлар'] = C['reps'].map(lambda r: ', '.join(r))
 rep_clean = lambda n: re.sub(r'\s*\([^()]*\)\s*$', '', n).strip().lower()
@@ -81,7 +82,7 @@ held = C.explode('reps').dropna(subset=['reps'])
 held['k'] = held['reps'].map(rep_clean)
 cnt = held.groupby('k').size()
 U['Бириктирилган аптека'] = U['Ходим'].str.lower().map(cnt).fillna(0).astype(int)
-U['Шу ой визит'] = U['Ходим'].str.lower().map(V[pd.to_datetime(V['Дата'], format='%d.%m.%Y', errors='coerce').dt.month == today.month].assign(k=lambda d: d['rep'].str.lower()).groupby('k').size()).fillna(0).astype(int)
+U['Шу ой визит'] = U['Ходим'].str.lower().map(V[pd.to_datetime(V['Дата'], dayfirst=True, errors='coerce').dt.month == today.month].assign(k=lambda d: d['rep'].str.lower()).groupby('k').size()).fillna(0).astype(int)
 out['10 Ишдан кетган, аптека ушлаб турибди'] = U[(~U['Фаол']) & (U['Бириктирилган аптека'] > 0)].sort_values('Бириктирилган аптека', ascending=False)
 out['11 Фаол, бу ой визит йўқ'] = U[U['Фаол'] & (U['Шу ой визит'] == 0) & U['Категория'].str.contains('Пред|представ', case=False)]
 out['12 Ходимлар'] = U
