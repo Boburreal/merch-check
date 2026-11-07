@@ -89,11 +89,12 @@ out['12 Ходимлар'] = U
 summ = [{'Текширув': k, 'Сони': len(d)} for k, d in out.items()]
 summ = [{'Текширув': 'Жами аптека карточкалари (ТП+МП, ID бўйича)', 'Сони': uniq['ID'].nunique()},
         {'Текширув': 'Жами ходимлар', 'Сони': len(U)}] + summ
+print("::notice::" + " | ".join(f"{x['Текширув']}={x['Сони']}" for x in summ))
 buf = io.BytesIO()
 with pd.ExcelWriter(buf, engine='openpyxl') as w:
-    pd.DataFrame(summ).to_excel(w, 'Хулоса', index=False)
+    pd.DataFrame(summ).to_excel(w, sheet_name='Хулоса', index=False)
     for k, d in out.items():
-        d.drop(columns=[x for x in ('reps', 'obj', 'lat') if x in d], errors='ignore').to_excel(w, k[:31], index=False)
+        d.drop(columns=[x for x in ('reps', 'obj', 'lat') if x in d], errors='ignore').to_excel(w, sheet_name=k[:31], index=False)
 print("::notice::" + " | ".join(f"{x['Текширув']}={x['Сони']}" for x in summ))
 key = os.environ["ROSTER_KEY"].encode()
 os.makedirs("drop", exist_ok=True)
