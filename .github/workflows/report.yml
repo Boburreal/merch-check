@@ -48,7 +48,7 @@ jobs:
           ROSTER_KEY: ${{ secrets.ROSTER_KEY }}
           TODAY: ${{ inputs.today }}
           MERCH_MINUTES: '25'
-          BACKLOG_MINUTES: ${{ inputs.merch_minutes || '60' }}
+          BACKLOG_MINUTES: ${{ inputs.merch_minutes || '15' }}
           ONLY_TP: ${{ inputs.only_tp }}
           ONLY_MP: ${{ inputs.only_mp }}
           AUTO: ${{ github.event_name == 'schedule' && '1' || inputs.auto }}
