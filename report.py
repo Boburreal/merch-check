@@ -18,7 +18,6 @@ def _hook(t, v, tb):                     # errors are visible in the run annotat
 
 _sys.excepthook = _hook
 
-from export import fetch
 from analysis import prepare
 from merch import check_visit, pick_model, comment, DailyQuotaExceeded, STATS
 import store
@@ -172,17 +171,10 @@ if MODE in ("daily", "update"):
     f1 = d1.replace(day=1)                                   # month-to-date files
 else:
     f1 = d1
-_raw_tp = fetch(1, f1, d2)
-tp = prepare(_raw_tp, 'ТП', loc_log)
+import vcache                            # cached month-to-date: finished months once, current month topped up daily
+tp = prepare(vcache.get('tp', f1, d2), 'ТП', loc_log)
 tp = tp[~tp['Лавозим'].str.contains('Медицин')]
-_raw_mp = fetch(4, f1, d2)
-mp = prepare(_raw_mp, 'МП', loc_log)
-try:                                   # warm the bot's visit cache (pharmacy history answers faster)
-    import vcache
-    if f1.day == 1:                    # only whole months from the 1st (cache assumes no gaps)
-        vcache.put(_raw_tp, 'tp'); vcache.put(_raw_mp, 'mp')
-except Exception as e:
-    print("::warning::vcache " + str(e)[:150])
+mp = prepare(vcache.get('mp', f1, d2), 'МП', loc_log)
 tp = enrich(tp, 'ТП', tp_people, comp, 'ТП')
 mp = enrich(mp, 'МП', mp_people, comp, 'МП')
 print(f"::notice::{MODE} {f1}..{d2} tp={len(tp)} mp={len(mp)}")
@@ -325,7 +317,7 @@ if MODE in ("daily", "update"):         # Аудиозаписи: the day's bloc
         print("::warning::az " + str(e)[:200])
 if MODE in ("daily", "update") and not os.environ.get('NO_BACKLOG'):
     # after the report is delivered: earlier days of the month not checked yet (free AI limit permitting)
-    BACK_MIN = int(os.environ.get("BACKLOG_MINUTES", "60"))
+    BACK_MIN = int(os.environ.get("BACKLOG_MINUTES", "15"))
     START = time.time(); MERCH_MIN = BACK_MIN
     for back in sorted({x.date() for x in tp.day} - {d2}, reverse=True):
         if time.time() - START > MERCH_MIN * 60:

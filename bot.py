@@ -94,7 +94,7 @@ def visits_for(row):
     d1 = d2 - dt.timedelta(days=DAYS)
     out = []
     for grp, who in (('tp', 'ТП'), ('mp', 'МП')):
-        v = vcache.get(grp, d1, d2)
+        v = vcache.get(grp, d1, d2, prefix='v')   # 'w' keshi hisobot uchun; bot eski 'v' keshidan foydalanadi
         if not len(v):
             continue
         obj = v['Контр-агент/Врач'].fillna('')

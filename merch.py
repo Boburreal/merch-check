@@ -85,17 +85,21 @@ def _models():
     full = sorted([n for n in flash if "lite" not in n], reverse=True)
     # each model has its own free daily quota: flash-lite first (tested ~75%), then flash models.
     # Probe once: skip models that are overloaded (503) or retired right now, so no thread waits on them.
-    ok = []
-    for m in lite + full:
-        for ki, key in enumerate(KEYS):
-            try:
-                x = requests.post(f"{API}/models/{m}:generateContent", headers={"x-goog-api-key": key}, timeout=60,
-                                  json={"contents": [{"parts": [{"text": "OK"}]}], "generationConfig": {"maxOutputTokens": 2}})
-                if x.status_code == 200:
-                    ok.append(f"{m}@{ki}")
-            except requests.RequestException:
-                pass
-    print(f"::notice::gemini models available: {ok}")
+    combos = [(m, ki) for m in lite + full for ki in range(len(KEYS))]
+
+    def probe(arg):
+        m, ki = arg
+        try:
+            x = requests.post(f"{API}/models/{m}:generateContent", headers={"x-goog-api-key": KEYS[ki]}, timeout=10,
+                              json={"contents": [{"parts": [{"text": "OK"}]}], "generationConfig": {"maxOutputTokens": 2}})
+            return f"{m}@{ki}" if x.status_code == 200 else None
+        except requests.RequestException:
+            return None
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        ok = [r for r in ex.map(probe, combos) if r]
+    print(f"::notice::gemini models available ({len(ok)}/{len(combos)}): {ok}")
     return ok
 
 
