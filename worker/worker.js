@@ -296,6 +296,9 @@ export default {
     const url = new URL(req_.url);
     const sec = await secret(env);
     if (url.pathname === "/setup") {
+      if (!env.SETUP_KEY || url.searchParams.get("key") !== env.SETUP_KEY) {
+        return new Response("Forbidden: ?key= kerak (Worker'ga SETUP_KEY secret qo'ying)", { status: 403 });
+      }
       const tg = await fetch(`https://api.telegram.org/bot${env.TG_BOT_TOKEN}/setWebhook`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: `${url.origin}/tg`, secret_token: sec, allowed_updates: ["message", "callback_query"] }),

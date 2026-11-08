@@ -16,6 +16,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install requests openpyxl pillow
+      - name: Test namunasi (sir ichida saqlanadi)
+        run: echo "${{ secrets.TEST_SAMPLE_B64 }}" | base64 -d > data/test_sample.csv
       - run: python test_run.py
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
