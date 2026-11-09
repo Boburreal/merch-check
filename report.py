@@ -299,8 +299,6 @@ elif MODE == "weekly":              # same Excel format as the daily files (Фа
         sub = mp[mask]
         uq = sub.sort_values(['day', 'dt']).drop_duplicates('Контр-агент/Врач')
         msg += ["", f"{lab} ({typ}): визит {len(sub)}, уникальный <b>{len(uq)}</b>"]
-        kol, un = sub['_reg'].value_counts(), uq['_reg'].value_counts()
-        msg += [f"• {rg}: {int(kol[rg])} / уник. {int(un.get(rg, 0))}" for rg in kol.index]
     top = tp.groupby('ТП')['Шубҳали'].mean().sort_values(ascending=False).head(5)
     msg += ["", "Шубҳали улуши энг юқори ТП:"] + [f"• {k}: {v * 100:.0f}%" for k, v in top.items() if v > 0]
 else:
