@@ -10,8 +10,11 @@ import store
 from merch import download, decide, comment
 
 STEP, DAY = os.environ["STEP"], dt.date.fromisoformat(os.environ["DAY"])
+TPNAME = os.environ.get("TPNAME", "").strip()            # re-check ALL visits of one ТП over DAY..TO (Claude looks at every photo)
+TO = dt.date.fromisoformat(os.environ["TO"]) if os.environ.get("TO") else DAY
 NAME = f"m_{DAY.isoformat()}"
-OUT = f"drop/cm_{DAY:%Y%m%d}"
+OUT = f"drop/cm_{DAY:%Y%m%d}" if not TPNAME else f"drop/cmtp_{DAY:%Y%m%d}"
+KEYN = f"cmkey_{DAY:%Y%m%d}" if not TPNAME else f"cmkey_tp_{DAY:%Y%m%d}"
 
 
 def composite(photos, n):
@@ -33,11 +36,15 @@ def composite(photos, n):
 if STEP == "export":
     from export import fetch
     from analysis import prepare
-    tp = prepare(fetch(1, DAY, DAY), 'ТП', store.load('loc_log'))
-    tp = tp[tp.day.dt.date == DAY]
-    old = store.load(NAME)
-    done = set(old.loc[old['category'] != 'error', 'id'].astype(int)) if len(old) else set()
-    todo = tp[~tp.id.isin(done) & tp['Лавозим'].str.contains('Торг')].reset_index(drop=True)
+    if TPNAME:
+        tp = prepare(fetch(1, DAY, TO), 'ТП', store.load('loc_log'))
+        todo = tp[tp['ТП'].str.contains(TPNAME, case=False, regex=False)].sort_values(['day', 'dt']).reset_index(drop=True)
+    else:
+        tp = prepare(fetch(1, DAY, DAY), 'ТП', store.load('loc_log'))
+        tp = tp[tp.day.dt.date == DAY]
+        old = store.load(NAME)
+        done = set(old.loc[old['category'] != 'error', 'id'].astype(int)) if len(old) else set()
+        todo = tp[~tp.id.isin(done) & tp['Лавозим'].str.contains('Торг')].reset_index(drop=True)
     os.makedirs("/tmp/cm", exist_ok=True)
 
     def one(arg):
@@ -46,23 +53,23 @@ if STEP == "export":
         img = composite(ph, n) if ph else None
         if img:
             open(f"/tmp/cm/{n:04d}.jpg", "wb").write(img)
-        return n, int(r['id']), len(ph)
+        return n, int(r['id']), len(ph), r['day'].strftime('%Y-%m-%d')
     with ThreadPoolExecutor(12) as ex:
-        idx = pd.DataFrame(list(ex.map(one, todo.iterrows())), columns=['n', 'id', 'photos'])
+        idx = pd.DataFrame(list(ex.map(one, todo.iterrows())), columns=['n', 'id', 'photos', 'day'])
     idx.to_csv("/tmp/cm/index.csv", index=False)
     with tarfile.open("/tmp/cm.tgz", "w:gz") as t:
         t.add("/tmp/cm", arcname="cm")
     key = os.urandom(32); open("/tmp/k.bin", "wb").write(key.hex().encode())
-    store.save_bytes(f"cmkey_{DAY:%Y%m%d}", key.hex().encode())          # import step decrypts Claude's answer with it
+    store.save_bytes(KEYN, key.hex().encode())          # import step decrypts Claude's answer with it
     subprocess.run(["openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-salt", "-in", "/tmp/cm.tgz", "-out", OUT + ".enc",
                     "-pass", "file:/tmp/k.bin"], check=True)
     subprocess.run(["openssl", "pkeyutl", "-encrypt", "-pubin", "-inkey", "drop_pub.pem", "-in", "/tmp/k.bin",
                     "-out", OUT + ".key"], check=True)
     os.remove("/tmp/k.bin")
-    print(f"::notice::claude export {DAY}: tp_day={len(tp)} todo={len(todo)} no_photo={(idx.photos == 0).sum()}")
+    print(f"::notice::claude export {DAY}..{TO}: tp_day={len(tp)} todo={len(todo)} no_photo={(idx.photos == 0).sum()}")
 
 else:
-    open("/tmp/k.bin", "wb").write(store.load_bytes(f"cmkey_{DAY:%Y%m%d}"))
+    open("/tmp/k.bin", "wb").write(store.load_bytes(KEYN))
     subprocess.run(["openssl", "enc", "-d", "-aes-256-cbc", "-pbkdf2", "-in", OUT + "_res.enc", "-out", "/tmp/res.csv",
                     "-pass", "file:/tmp/k.bin"], check=True)
     os.remove("/tmp/k.bin")
@@ -75,12 +82,21 @@ else:
         raw = json.loads(r.raw); d = decide(raw)
         rows.append({"id": int(r.id), **d, "comment": "Claude: " + comment(raw), "raw": json.dumps(raw, ensure_ascii=False)})
     new = pd.DataFrame(rows)
-    old = store.load(NAME)
-    if len(old):
-        old = old[~old['id'].astype(int).isin(set(new['id']))]
-        new = pd.concat([old, new.astype(str)], ignore_index=True)
-    store.save(NAME, new)
-    for f in (OUT + ".enc", OUT + ".key", OUT + "_res.enc", f"drop/store/cmkey_{DAY:%Y%m%d}.fer"):
+    if TPNAME:                       # res.csv has a "day" column: replace these ids in each day's store
+        new['day'] = res['day'].values
+        for dd, part in new.groupby('day'):
+            nm = f"m_{dd}"; part = part.drop(columns='day'); old = store.load(nm)
+            if len(old):
+                old = old[~old['id'].astype(int).isin(set(part['id']))]
+                part = pd.concat([old, part.astype(str)], ignore_index=True)
+            store.save(nm, part)
+    else:
+        old = store.load(NAME)
+        if len(old):
+            old = old[~old['id'].astype(int).isin(set(new['id']))]
+            new = pd.concat([old, new.astype(str)], ignore_index=True)
+        store.save(NAME, new)
+    for f in (OUT + ".enc", OUT + ".key", OUT + "_res.enc", f"drop/store/{KEYN}.fer"):
         if os.path.exists(f):
             os.remove(f)
     print(f"::notice::claude import {DAY}: added={len(rows)} cats={pd.DataFrame(rows)['category'].value_counts().to_dict()}")

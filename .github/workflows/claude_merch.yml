@@ -4,6 +4,8 @@ on:
     inputs:
       step: {description: "export / import", default: "export"}
       day: {description: "YYYY-MM-DD", default: ""}
+      to: {description: "TP rejimi: oxirgi sana YYYY-MM-DD", default: ""}
+      tp: {description: "TP rejimi: familiya (bo'sh = oddiy rejim)", default: ""}
 permissions:
   contents: write
 concurrency:
@@ -22,6 +24,8 @@ jobs:
         env:
           STEP: ${{ inputs.step }}
           DAY: ${{ inputs.day }}
+          TO: ${{ inputs.to }}
+          TPNAME: ${{ inputs.tp }}
           SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
           SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
