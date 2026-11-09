@@ -274,6 +274,35 @@ if MODE in ("daily", "update"):
     if len(td):
         top = td.groupby('ТП')['Шубҳали'].mean().sort_values(ascending=False).head(3)
         msg += ["", "Шубҳали улуши энг юқори ТП:"] + [f"• {k}: {v * 100:.0f}%" for k, v in top.items() if v > 0]
+elif MODE == "weekly":              # same Excel format as the daily files (Факт визит и мерч + МП визит), for the whole week
+    wk = f"{d1:%d.%m}-{d2:%d.%m.%Y}"
+    p1 = f"/tmp/Факт визит и мерч неделя ({wk}).xlsx"
+    days, tpx = tp_file.build(p1, f"Факт визит ва мерч — ҳафта ({wk})", tp, merch, seed, tp_people, loc_changes,
+                              period_label=wk)
+    p2 = f"/tmp/МП визит неделя ({wk}).xlsx"
+    mp_file.build(p2, f"МП визит — ҳафта ({wk})", mp, mp_people)
+    files = [(p1, "ТП: " + title), (p2, "МП: " + title)]
+    plan, fact = int(days['План'].sum()), int(days['Факт'].sum())
+    vit, kas = int(days['Витрина'].sum()), int(days['Касса'].sum())
+    tp_uniq = int(tp.drop_duplicates('Контр-агент/Врач').shape[0])
+    msg = [f"📊 <b>{title}</b>", "",
+           f"<b>ТП</b>: {tp['ТП'].nunique()} киши ишлади. План {plan} → факт визит {fact} ({pct(fact, plan)})",
+           f"Уникальный (такрорланмаган аптека/объект): <b>{tp_uniq}</b>",
+           f"🛒 Витрина {vit} ({pct(vit, plan)}), Касса {kas} ({pct(kas, plan)})",
+           f"⚠️ Шубҳали визит: {int(tp['Шубҳали'].sum())} ({pct(tp['Шубҳали'].sum(), len(tp))})", ""]
+    mtype = mp['Тип визита'].fillna('').str.lower()
+    msg.append(f"<b>МП</b>: {mp['МП'].nunique()} киши, жами {len(mp)} визит, шубҳали {int(mp['Шубҳали'].sum())}")
+    reg_of = dict(zip(mp_people['name'], mp_people['region']))
+    mp['_reg'] = mp['Иш ҳудуди']
+    for typ, lab, mask in (("К контрагенту", "🏥 Аптека", ~mtype.str.contains('врач')),
+                           ("К доктору", "👨‍⚕️ Врач", mtype.str.contains('врач'))):
+        sub = mp[mask]
+        uq = sub.sort_values(['day', 'dt']).drop_duplicates('Контр-агент/Врач')
+        msg += ["", f"{lab} ({typ}): визит {len(sub)}, уникальный <b>{len(uq)}</b>"]
+        kol, un = sub['_reg'].value_counts(), uq['_reg'].value_counts()
+        msg += [f"• {rg}: {int(kol[rg])} / уник. {int(un.get(rg, 0))}" for rg in kol.index]
+    top = tp.groupby('ТП')['Шубҳали'].mean().sort_values(ascending=False).head(5)
+    msg += ["", "Шубҳали улуши энг юқори ТП:"] + [f"• {k}: {v * 100:.0f}%" for k, v in top.items() if v > 0]
 else:
     if MODE == "monthly":
         bad_tp = tp.groupby('ТП')['Шубҳали'].sum(); bad_tp = bad_tp[bad_tp > 0].index
@@ -287,11 +316,6 @@ else:
     p2 = f"/tmp/МП анализ {d1:%d.%m}-{d2:%d.%m.%Y}.xlsx"
     build(p2, f"МП — {title}", mp_r.iloc[0:0], mp_r, None, note, loc_changes, None)
     files = [(p1, "ТП: " + title), (p2, "МП: " + title)]
-    if MODE == "weekly":                # day-by-day sheet (Ежедневный) in the "Факт визит и мерч" format for the week
-        p3 = f"/tmp/Факт визит и мерч неделя ({d1:%d.%m}-{d2:%d.%m.%Y}).xlsx"
-        tp_file.build(p3, f"Факт визит ва мерч — ҳафта ({d1:%d.%m}–{d2:%d.%m.%Y})", tp, merch, seed, tp_people,
-                      loc_changes, period_label=f"{d1:%d.%m}-{d2:%d.%m.%Y}")
-        files = [(p3, "ТП кунма-кун: " + title)] + files
     chk = tp[['id']].merge(merch, on='id', how='inner')['category'].isin(['merch', 'none', 'suspicious']).sum() if len(merch) else 0
     msg = [f"📊 <b>{title}</b>", "",
            f"<b>ТП</b>: {len(tp)} визит, {tp['ТП'].nunique()} киши, шубҳали {int(tp['Шубҳали'].sum())} ({pct(tp['Шубҳали'].sum(), len(tp))}), мерч текширилди {chk}",
