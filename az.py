@@ -13,6 +13,12 @@ from sales import BASE
 
 TZ = ZoneInfo("Asia/Tashkent")
 PER_DAY, PER_TP = 6, 2
+STORE = {'tp': 'az_file', 'mp': 'az_file_mp'}
+LABEL = {'tp': 'ТП', 'mp': 'МП'}
+FULL2SHORT = {'Бухарская': 'Бухара', 'Джизакская': 'Джизак', 'Навоийская': 'Наваи', 'Р.Каракалпакстан': 'Нукус',
+              'Самаркандская': 'Самарканд', 'Сурхандарьинская': 'Термез', 'Наманганская': 'Наманган', 'Хорезмская': 'Ургенч',
+              'Ферганская': 'Фергана', 'Коканд': 'Коканд', 'Кашкадарьинская': 'Карши', 'Андижанская': 'Андижан',
+              'Сырдарьинская': 'Сырдарья', 'Ташкентская': 'Таш обл'}   # МП: all regions except the city of Ташкент
 SHORT = {'бух': 'Бухара', 'джиз': 'Джизак', 'дж': 'Джизак', 'нав': 'Наваи', 'нук': 'Нукус', 'сам': 'Самарканд',
          'тер.в': 'Термез', 'тер.з': 'Термез', 'тер': 'Термез', 'нам': 'Наманган', 'ург': 'Ургенч', 'фер': 'Фергана',
          'кок': 'Коканд', 'кар': 'Карши'}            # Bobur's file covers these regions only (no Ташкент)
@@ -40,18 +46,28 @@ def short_region(name: str):
     return SHORT.get(m.group(1).strip().lower()) if m else None
 
 
-def load_file():
-    data = store.load_bytes('az_file')
-    if not data:                             # first run: Bobur's file, encrypted with the roster key
+def load_file(grp='tp'):
+    data = store.load_bytes(STORE[grp])
+    if not data and grp == 'tp':             # first run: Bobur's file, encrypted with the roster key
         import os, roster as R
         p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'az_base.enc')
         data = R._fernet().decrypt(open(p, 'rb').read()) if os.path.exists(p) else None
+    if not data and grp == 'mp':             # МП file starts from the ТП file's layout (styles), without its rows
+        base = load_file('tp')
+        if base is None:
+            return None
+        ws = base.active
+        heads = [r for r in range(1, ws.max_row + 1) if ws.cell(r, 2).value == 'Менеджер']
+        if len(heads) > 1:
+            ws.delete_rows(heads[1], ws.max_row - heads[1] + 1)
+        base._az_tmpl = ws.max_row               # the one left block is only a style template, removed after the first write
+        return base
     return load_workbook(io.BytesIO(data)) if data else None
 
 
-def save_file(wb):
+def save_file(wb, grp='tp'):
     b = io.BytesIO(); wb.save(b)
-    store.save_bytes('az_file', b.getvalue())
+    store.save_bytes(STORE[grp], b.getvalue())
 
 
 def blocks(ws):
@@ -101,13 +117,17 @@ def key(name):
     return R.key(name)
 
 
-def pick(day: dt.date, visits: pd.DataFrame, checked: set, last_seen: dict, seed: int):
-    """6 ТП from different regions who visited pharmacies that day; first those not checked this month."""
+def pick(day: dt.date, visits: pd.DataFrame, checked: set, last_seen: dict, seed: int, grp='tp', regions=None):
+    """6 people from different regions who visited pharmacies that day; first those not checked this month.
+    ТП: region from the name prefix '(ург)'; МП: region from the roster (full name -> short)."""
     rnd = random.Random(seed)
     v = visits[visits['day'].dt.date == day].copy()
-    v = v[v['Фарм. пред'].str.contains('Торг', na=False)]
     v['who'] = v['Фарм. пред'].str.replace(r'\s*\([^()]*\)\s*$', '', regex=True).str.strip()
-    v['reg'] = v['who'].map(short_region)
+    if grp == 'tp':
+        v = v[v['Фарм. пред'].str.contains('Торг', na=False)]
+        v['reg'] = v['who'].map(short_region)
+    else:
+        v['reg'] = v['who'].map(lambda w: FULL2SHORT.get((regions or {}).get(key(w))))
     v = v[v['reg'].notna()]
     cnt = v.groupby('who').size()
     people = [w for w in cnt.index if cnt[w] >= PER_TP]
@@ -130,15 +150,19 @@ def pick(day: dt.date, visits: pd.DataFrame, checked: set, last_seen: dict, seed
         ids = rnd.sample(list(vv['#'].astype(int)), PER_TP)
         for i in sorted(ids):
             r = vv[vv['#'].astype(int) == i].iloc[0]
-            rows.append({'who': w, 'reg': r['reg'], 'id': i,
+            rows.append({'who': w, 'reg': r['reg'], 'id': i, 'src': int(r['src']) if 'src' in r and pd.notna(r['src']) else (1 if grp == 'tp' else 4),
                          'obj': re.sub(r'\s*\([^()]*\)\s*$', '', str(r['Контр-агент/Врач'])).strip()})
     return rows
 
 
 def listen(s, rows):
+    cur = None
     for r in rows:
         r['dur'], r['comment'] = None, ''
         try:
+            if r.get('src') and r['src'] != cur:          # the visit page needs the project the visit was entered in
+                from sales import switch_project
+                switch_project(s, r['src']); cur = r['src']
             url = audio.audio_url(s, r['id'])
             if not url:
                 r['comment'] = 'Запись йўқ'; continue
@@ -158,7 +182,7 @@ def listen(s, rows):
     return rows
 
 
-def refill(ws) -> int:
+def refill(ws, proj=1) -> int:
     """Rows left as 'Текширилмади (ИИ лимити)' are listened to again."""
     from sales import login, switch_project
     todo = []
@@ -167,10 +191,10 @@ def refill(ws) -> int:
         if isinstance(g, str) and g.startswith('Текширилмади') and isinstance(h, str):
             m = re.search(r'/visits/(\d+)/', h)
             if m:
-                todo.append((row, {'id': int(m.group(1))}))
+                todo.append((row, {'id': int(m.group(1)), 'src': proj}))
     if not todo:
         return 0
-    s = login(); switch_project(s, 1)
+    s = login(); switch_project(s, proj)
     listen(s, [r for _, r in todo])
     n = 0
     for row, r in todo:
@@ -210,24 +234,32 @@ def write_block(ws, day: dt.date, rows):
             c.hyperlink = c.value
 
 
-def run(days, send=True):
-    """Add blocks for the given days (oldest first, so the newest ends on top) and send the file."""
-    import vcache
+def run(days, send=True, grp='tp'):
+    """Add blocks for the given days (oldest first, so the newest ends on top) and send the file. grp: 'tp' or 'mp'."""
+    import vcache, roster as R
     from sales import login, switch_project
-    wb = load_file()
+    wb = load_file(grp)
     if wb is None:
-        print("::warning::az: base file not uploaded yet"); return
+        print(f"::warning::az {grp}: base file not uploaded yet"); return
     ws = wb.active
-    refilled = refill(ws)
-    have = {b[0] for b in blocks(ws)}
+    refilled = refill(ws, 1 if grp == 'tp' else 4)
+    have = {b[0] for b in blocks(ws)} if not getattr(wb, '_az_tmpl', 0) else set()
     days = [d for d in sorted(days) if f"{d:%d.%m}" not in have]
     if not days and not refilled:
-        print("::notice::az: nothing new"); return
+        print(f"::notice::az {grp}: nothing new"); return
+    regions = {}
     if days:
-        v = vcache.get('tp', min(days).replace(day=1), max(days))
+        d1_ = min(days).replace(day=1)
+        try:
+            parts = R.load(); regions = dict(zip(parts['mp']['key'], parts['mp']['region']))
+            raw_tp, raw_mp = R.regroup(vcache.get('tp', d1_, max(days)), vcache.get('mp', d1_, max(days)), parts['tp'], parts['mp'])
+        except Exception as e:
+            print(f"::warning::az roster not available ({str(e)[:80]}) - plain projects")
+            raw_tp, raw_mp = vcache.get('tp', d1_, max(days)), vcache.get('mp', d1_, max(days))
+        v = raw_tp if grp == 'tp' else raw_mp
         v = v[v['Тип визита'].fillna('').str.contains('аптек|контрагент', case=False)]
         v = v.assign(day=pd.to_datetime(v['Дата'], format='%d.%m.%Y'))
-        s = login(); switch_project(s, 1)
+        s = login()
     added = []
     for d in days:
         checked, last_seen = set(), {}
@@ -240,34 +272,38 @@ def run(days, send=True):
                 last_seen[key(m)] = max(last_seen.get(key(m), ''), bd.isoformat())
                 if bd.month == d.month and bd.year == d.year:
                     checked.add(key(m))
-        rows = pick(d, v, checked, last_seen, seed=d.toordinal())
+        rows = pick(d, v, checked, last_seen, seed=d.toordinal(), grp=grp, regions=regions)
         if not rows:
-            print(f"::notice::az {d}: no ТП visits"); continue
+            print(f"::notice::az {grp} {d}: no {LABEL[grp]} visits"); continue
         listen(s, rows)
+        tmpl = getattr(wb, '_az_tmpl', 0)
         write_block(ws, d, rows)
+        if tmpl:                                       # new МП file: drop the copied style-template block (it is now the last one)
+            ws.delete_rows(ws.max_row - tmpl + 1, tmpl); wb._az_tmpl = 0; _relink(ws)
         added.append((d, rows))
-        print(f"::notice::az {d}: {len(rows) // PER_TP} ТП, {len(rows)} rows")
-    if added:
+        print(f"::notice::az {grp} {d}: {len(rows) // PER_TP} {LABEL[grp]}, {len(rows)} rows")
+    if added and grp == 'tp':
         target = max(d for d, _ in added).month
         if any(int(b[0][3:5]) != target for b in blocks(ws) if b[0][3:5].isdigit()):
             old = io.BytesIO(); wb.save(old)            # previous month's file is kept separately
             prev = [b[0] for b in blocks(ws) if b[0][3:5].isdigit() and int(b[0][3:5]) != target]
             store.save_bytes(f"az_file_m{prev[0][3:5]}", old.getvalue())
             print(f"::notice::az: month {target} starts a new file, removed {prune(ws, target)} old blocks")
-    save_file(wb)
+    save_file(wb, grp)
     if send and (added or refilled):
         from telegram import send_text, send_file
         last = max([d for d, _ in added] or [dt.datetime.now(TZ).date()])
-        path = f"/tmp/Аудиозаписи ({MON[last.month]}-{last:%y}).xlsx"
+        tag = '' if grp == 'tp' else ' МП'
+        path = f"/tmp/Аудиозаписи{tag} ({MON[last.month]}-{last:%y}).xlsx"
         wb.save(path)
-        lines = [f"🎧 <b>Аудиозаписи</b>" + (" — қўшилди: " + ", ".join(f"{d:%d.%m}" for d, _ in added) if added else "")]
+        lines = [f"🎧 <b>Аудиозаписи{tag}</b>" + (" — қўшилди: " + ", ".join(f"{d:%d.%m}" for d, _ in added) if added else "")]
         if refilled:
             lines.append(f"• олдин ИИ лимити туфайли текширилмай қолган {refilled} та ёзув тингланди")
         for d, rows in added:
             bad = sum(1 for r in rows if r['comment'].startswith(('Маълумот йўқ', 'Запись йўқ')))
-            lines.append(f"• {d:%d.%m}: {len(rows) // PER_TP} ТП, {len(rows)} ёзув, «Маълумот йўқ / ёзув йўқ»: {bad}")
+            lines.append(f"• {d:%d.%m}: {len(rows) // PER_TP} {LABEL[grp]}, {len(rows)} ёзув, «Маълумот йўқ / ёзув йўқ»: {bad}")
         send_text("\n".join(lines))
-        send_file(path, "Аудиозаписи — янги кунлар тепада")
+        send_file(path, f"Аудиозаписи{tag} — янги кунлар тепада")
 
 
 if __name__ == "__main__":
@@ -343,4 +379,9 @@ if __name__ == "__main__":
     else:
         d1 = dt.date.fromisoformat(os.environ["AZ_FROM"]) if os.environ.get("AZ_FROM") else today - dt.timedelta(days=1)
         d2 = dt.date.fromisoformat(os.environ["AZ_TO"]) if os.environ.get("AZ_TO") else today - dt.timedelta(days=1)
-        run([d1 + dt.timedelta(days=i) for i in range((d2 - d1).days + 1)])
+        _days = [d1 + dt.timedelta(days=i) for i in range((d2 - d1).days + 1)]
+        for _g in ((os.environ.get('AZ_GROUP') or 'tp,mp').split(',')):
+            try:
+                run(_days, grp=_g.strip())
+            except Exception as e:
+                print(f"::error::az {_g}: {str(e)[:200]}")

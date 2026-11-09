@@ -172,9 +172,10 @@ if MODE in ("daily", "update"):
 else:
     f1 = d1
 import vcache                            # cached month-to-date: finished months once, current month topped up daily
-tp = prepare(vcache.get('tp', f1, d2), 'ТП', loc_log)
+raw_tp, raw_mp = R.regroup(vcache.get('tp', f1, d2), vcache.get('mp', f1, d2), tp_people, mp_people)   # roster decides ТП / МП
+tp = prepare(raw_tp, 'ТП', loc_log)
 tp = tp[~tp['Лавозим'].str.contains('Медицин')]
-mp = prepare(vcache.get('mp', f1, d2), 'МП', loc_log)
+mp = prepare(raw_mp, 'МП', loc_log)
 tp = enrich(tp, 'ТП', tp_people, comp, 'ТП')
 mp = enrich(mp, 'МП', mp_people, comp, 'МП')
 print(f"::notice::{MODE} {f1}..{d2} tp={len(tp)} mp={len(mp)}")
@@ -342,6 +343,7 @@ if MODE in ("daily", "update"):         # Аудиозаписи: the day's bloc
     try:
         import az
         az.run([d2])
+        az.run([d2], grp='mp')            # МП audio file (same format, separate file)
     except Exception as e:
         print("::warning::az " + str(e)[:200])
 if MODE in ("daily", "update") and not os.environ.get('NO_BACKLOG'):
