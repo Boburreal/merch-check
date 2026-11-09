@@ -285,22 +285,12 @@ elif MODE == "weekly":              # same Excel format as the daily files (Фа
     plan, fact = int(days['План'].sum()), int(days['Факт'].sum())
     vit, kas = int(days['Витрина'].sum()), int(days['Касса'].sum())
     tp_uniq = int(tp.drop_duplicates('Контр-агент/Врач').shape[0])
-    msg = [f"📊 <b>{title}</b>", "",
-           f"<b>ТП</b>: {tp['ТП'].nunique()} киши ишлади. План {plan} → факт визит {fact} ({pct(fact, plan)})",
-           f"Уникальный (такрорланмаган аптека/объект): <b>{tp_uniq}</b>",
-           f"🛒 Витрина {vit} ({pct(vit, plan)}), Касса {kas} ({pct(kas, plan)})",
-           f"⚠️ Шубҳали визит: {int(tp['Шубҳали'].sum())} ({pct(tp['Шубҳали'].sum(), len(tp))})", ""]
     mtype = mp['Тип визита'].fillna('').str.lower()
-    msg.append(f"<b>МП</b>: {mp['МП'].nunique()} киши, жами {len(mp)} визит, шубҳали {int(mp['Шубҳали'].sum())}")
-    reg_of = dict(zip(mp_people['name'], mp_people['region']))
-    mp['_reg'] = mp['Иш ҳудуди']
-    for typ, lab, mask in (("К контрагенту", "🏥 Аптека", ~mtype.str.contains('врач')),
-                           ("К доктору", "👨‍⚕️ Врач", mtype.str.contains('врач'))):
-        sub = mp[mask]
-        uq = sub.sort_values(['day', 'dt']).drop_duplicates('Контр-агент/Врач')
-        msg += ["", f"{lab} ({typ}): визит {len(sub)}, уникальный <b>{len(uq)}</b>"]
-    top = tp.groupby('ТП')['Шубҳали'].mean().sort_values(ascending=False).head(5)
-    msg += ["", "Шубҳали улуши энг юқори ТП:"] + [f"• {k}: {v * 100:.0f}%" for k, v in top.items() if v > 0]
+    mp_doc, mp_ph = mp[mtype.str.contains('врач')], mp[~mtype.str.contains('врач')]
+    uq = lambda d: len(d.drop_duplicates('Контр-агент/Врач'))
+    msg = ["ТП", f"Факт визит {fact}", f"Уникальный {tp_uniq}", "",
+           "МП Контрагент", f"Факт визит {len(mp_ph)}", f"Уникальный {uq(mp_ph)}", "",
+           "МП Врач", f"Факт визит {len(mp_doc)}", f"Уникальный {uq(mp_doc)}"]
 else:
     if MODE == "monthly":
         bad_tp = tp.groupby('ТП')['Шубҳали'].sum(); bad_tp = bad_tp[bad_tp > 0].index
