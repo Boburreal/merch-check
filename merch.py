@@ -49,6 +49,11 @@ Think carefully about surface - decide by WHERE THE TWO BOXES THEMSELVES STAND, 
 - products standing on a shelf or rack BEHIND the counter (the pharmacist's side, among other medicine boxes on the same shelf) are "shelf",
   even when the counter, a calculator or a keyboard is in the foreground of the photo - the photo is often taken from the customer side, from a distance;
 - several boxes of A and B stacked / lined up as a display (many facings, often behind glass) are "shelf" (a vitrina display), even when that display stands on the counter.
+IMPORTANT - the counter is often made of GLASS or dark/glossy material, or has a transparent safety screen / curved glass guard standing on it:
+- boxes standing on the flat top of the sales counter are "counter" EVEN IF the counter top is glass or dark, and EVEN IF a clear glass/plastic screen is next to them or in front;
+- clear signs of the counter: laptop, monitor, keyboard, mouse, calculator, card terminal, receipt printer, barcode scanner, camera, desk mat, candy jar, notebook, scissors, plastic bags next to the boxes;
+- "shelf" only when the boxes stand INSIDE a display cabinet / on a shelf among rows of other medicine boxes, or as a stacked display of many facings.
+- Typical visit: one photo of the counter (kassa) and one photo of the display (vitrina) - judge each photo on its own.
 The photo may be taken from far away: look for the small orange-yellow (A) and purple (B) boxes anywhere in the picture.
 Return ONLY JSON: {"photos":[{"rinomaks":bool,"forsil":bool,"pharmacy_visible":bool,"surface":"..."},{...}]}"""
 
