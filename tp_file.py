@@ -80,7 +80,7 @@ def rows_per_day(tp: pd.DataFrame, merch: pd.DataFrame, seed: pd.DataFrame, plan
     return pd.DataFrame(out), tp
 
 
-def build(path, month_title, tp, merch, seed, people, loc_changes):
+def build(path, month_title, tp, merch, seed, people, loc_changes, period_label=None):
     plans = dict(zip(people['key'], people['plan']))
     days, tpx = rows_per_day(tp, merch, seed, plans)
     wb = Workbook()
@@ -113,7 +113,7 @@ def build(path, month_title, tp, merch, seed, people, loc_changes):
     if len(days):
         s = days[['План', 'Факт', 'Витрина', 'Касса']].sum(); r += 1
         d0, d1 = days.day.min(), days.day.max()
-        vals = [f"01-{d1:%d.%m.%Y}", None, 'ИТОГО', None, None, len(days), s.План, s.Факт, _pct(s.Факт, s.План),
+        vals = [period_label or f"01-{d1:%d.%m.%Y}", None, 'ИТОГО', None, None, len(days), s.План, s.Факт, _pct(s.Факт, s.План),
                 s.Витрина, _pct(s.Витрина, s.План), s.Касса, _pct(s.Касса, s.План), None]
         for j, v in enumerate(vals, 1):
             c = ws.cell(r, j, v); c.font = Font(bold=True); c.fill = GRN; c.border = BOX
@@ -137,7 +137,7 @@ def build(path, month_title, tp, merch, seed, people, loc_changes):
                          if k in flagcnt and flagcnt[k].get(x.ТП, 0))
         if tpx.loc[tpx['ТП'] == x.ТП, 'Янги'].any():
             note = "ЯНГИ ТП; " + note
-        vals = [MON[days.day.max().month], n, x.ТП, 'ТП', x.Регион, x.d, x.План, x.Факт, _pct(x.Факт, x.План),
+        vals = [(period_label or MON[days.day.max().month]), n, x.ТП, 'ТП', x.Регион, x.d, x.План, x.Факт, _pct(x.Факт, x.План),
                 x.Витрина, _pct(x.Витрина, x.План), x.Касса, _pct(x.Касса, x.План), int(sus.get(x.ТП, 0)), note]
         for j, v in enumerate(vals, 1):
             c = ws.cell(n + 1, j, v); c.border = BOX

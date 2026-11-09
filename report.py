@@ -287,6 +287,11 @@ else:
     p2 = f"/tmp/МП анализ {d1:%d.%m}-{d2:%d.%m.%Y}.xlsx"
     build(p2, f"МП — {title}", mp_r.iloc[0:0], mp_r, None, note, loc_changes, None)
     files = [(p1, "ТП: " + title), (p2, "МП: " + title)]
+    if MODE == "weekly":                # day-by-day sheet (Ежедневный) in the "Факт визит и мерч" format for the week
+        p3 = f"/tmp/Факт визит и мерч неделя ({d1:%d.%m}-{d2:%d.%m.%Y}).xlsx"
+        tp_file.build(p3, f"Факт визит ва мерч — ҳафта ({d1:%d.%m}–{d2:%d.%m.%Y})", tp, merch, seed, tp_people,
+                      loc_changes, period_label=f"{d1:%d.%m}-{d2:%d.%m.%Y}")
+        files = [(p3, "ТП кунма-кун: " + title)] + files
     chk = tp[['id']].merge(merch, on='id', how='inner')['category'].isin(['merch', 'none', 'suspicious']).sum() if len(merch) else 0
     msg = [f"📊 <b>{title}</b>", "",
            f"<b>ТП</b>: {len(tp)} визит, {tp['ТП'].nunique()} киши, шубҳали {int(tp['Шубҳали'].sum())} ({pct(tp['Шубҳали'].sum(), len(tp))}), мерч текширилди {chk}",
