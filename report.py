@@ -288,9 +288,19 @@ elif MODE == "weekly":              # same Excel format as the daily files (Фа
     mtype = mp['Тип визита'].fillna('').str.lower()
     mp_doc, mp_ph = mp[mtype.str.contains('врач')], mp[~mtype.str.contains('врач')]
     uq = lambda d: len(d.drop_duplicates('Контр-агент/Врач'))
-    msg = ["ТП", f"Факт визит {fact}", f"Уникальный {tp_uniq}", "",
-           "МП Контрагент", f"Факт визит {len(mp_ph)}", f"Уникальный {uq(mp_ph)}", "",
-           "МП Врач", f"Факт визит {len(mp_doc)}", f"Уникальный {uq(mp_doc)}"]
+    short = ["ТП", f"Факт визит {fact}", f"Уникальный {tp_uniq}", "",
+             "МП Контрагент", f"Факт визит {len(mp_ph)}", f"Уникальный {uq(mp_ph)}", "",
+             "МП Врач", f"Факт визит {len(mp_doc)}", f"Уникальный {uq(mp_doc)}"]
+    msg = [f"📊 <b>{title}</b>", "",
+           f"<b>ТП</b>: {tp['ТП'].nunique()} киши ишлади. План {plan} → факт визит {fact} ({pct(fact, plan)})",
+           f"Уникальный: <b>{tp_uniq}</b>",
+           f"🛒 Витрина {vit} ({pct(vit, plan)}), Касса {kas} ({pct(kas, plan)})",
+           f"⚠️ Шубҳали визит: {int(tp['Шубҳали'].sum())} ({pct(tp['Шубҳали'].sum(), len(tp))})", "",
+           f"<b>МП</b>: {mp['МП'].nunique()} киши, жами {len(mp)} визит, шубҳали {int(mp['Шубҳали'].sum())}",
+           f"🏥 Аптека: визит {len(mp_ph)}, уникальный {uq(mp_ph)}",
+           f"👨‍⚕️ Врач: визит {len(mp_doc)}, уникальный {uq(mp_doc)}"]
+    top = tp.groupby('ТП')['Шубҳали'].mean().sort_values(ascending=False).head(5)
+    msg += ["", "Шубҳали улуши энг юқори ТП:"] + [f"• {k}: {v * 100:.0f}%" for k, v in top.items() if v > 0]
 else:
     if MODE == "monthly":
         bad_tp = tp.groupby('ТП')['Шубҳали'].sum(); bad_tp = bad_tp[bad_tp > 0].index
@@ -314,6 +324,8 @@ else:
     msg += ["", "Шубҳали улуши энг юқори ТП:"] + [f"• {k}: {v * 100:.0f}%" for k, v in top.items() if v > 0]
 
 send_text("\n".join(msg))
+if MODE == "weekly":              # short copy-paste text, separate message
+    send_text("\n".join(short))
 if os.environ.get('ONLY_TP'):
     files = files[:1]
 if os.environ.get('ONLY_MP'):
