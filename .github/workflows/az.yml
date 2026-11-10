@@ -7,6 +7,7 @@ on:
       mode: {description: "bo'sh / split / review / relisten", default: ""}
       model: {description: "Gemini model (bo'sh = avtomatik)", default: ""}
       group: {description: "tp / mp / tp,mp (bo'sh = ikkalasi)", default: ""}
+      redo: {description: "1 = shu kunlar blokini o'chirib qaytadan tuzish", default: ""}
       region: {description: "faqat shu hudud (masalan Андижан), bo'sh = hammasi", default: ""}
 permissions:
   contents: write
@@ -27,6 +28,7 @@ jobs:
           AZ_TO: ${{ inputs.to }}
           AZ_GROUP: ${{ inputs.group }}
           AZ_REGION: ${{ inputs.region }}
+          AZ_REDO: ${{ inputs.redo }}
           SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
           SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

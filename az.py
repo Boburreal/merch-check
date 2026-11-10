@@ -112,6 +112,19 @@ def prune(ws, month: int) -> int:
     return len(ranges)
 
 
+def drop_day(ws, dd: str) -> bool:
+    """Remove the block of day 'dd.mm' (manual redo); never removes the last remaining block."""
+    heads = [r for r in range(1, ws.max_row + 1) if ws.cell(r, 2).value == 'Менеджер']
+    if len(heads) < 2:
+        return False
+    for i, h in enumerate(heads):
+        if str(ws.cell(h, 1).value).strip() == dd:
+            end = (heads[i + 1] - 1) if i + 1 < len(heads) else ws.max_row
+            ws.delete_rows(h, end - h + 1); _relink(ws)
+            return True
+    return False
+
+
 def key(name):
     import roster as R
     return R.key(name)
@@ -246,6 +259,9 @@ def run(days, send=True, grp='tp'):
     if wb is None:
         print(f"::warning::az {grp}: base file not uploaded yet"); return
     ws = wb.active
+    import os as _o
+    if _o.environ.get('AZ_REDO'):
+        print(f"::notice::az redo: removed old blocks {[f'{d:%d.%m}' for d in days if drop_day(ws, f'{d:%d.%m}')]}")
     refilled = refill(ws, 1 if grp == 'tp' else 4)
     have = {b[0] for b in blocks(ws)} if not getattr(wb, '_az_tmpl', 0) else set()
     days = [d for d in sorted(days) if f"{d:%d.%m}" not in have]
