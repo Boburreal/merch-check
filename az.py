@@ -129,6 +129,10 @@ def pick(day: dt.date, visits: pd.DataFrame, checked: set, last_seen: dict, seed
     else:
         v['reg'] = v['who'].map(lambda w: FULL2SHORT.get((regions or {}).get(key(w))))
     v = v[v['reg'].notna()]
+    import os as _os
+    _rg = (_os.environ.get('AZ_REGION') or '').strip().lower()
+    if _rg:                                   # manual run for one region only
+        v = v[v['reg'].str.lower().str.startswith(_rg[:5])]
     cnt = v.groupby('who').size()
     people = [w for w in cnt.index if cnt[w] >= PER_TP]
     fresh = [w for w in people if key(w) not in checked]
