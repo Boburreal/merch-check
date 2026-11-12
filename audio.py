@@ -110,7 +110,7 @@ def _strong() -> list:
         r = requests.get(f"{merch.API}/models", headers={"x-goog-api-key": merch.KEYS[0]}, timeout=30)
         r.raise_for_status()
         names = [m["name"].split("/")[-1] for m in r.json().get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
-        full = sorted([n for n in names if "flash" in n and "lite" not in n and not any(x in n for x in ("image", "tts", "live", "audio", "exp", "preview", "thinking"))], reverse=True)
+        full = sorted([n for n in names if "flash" in n and "lite" not in n and not any(x in n for x in ("image", "tts", "live", "audio", "exp", "preview", "thinking", "omni", "latest", "2.5"))], reverse=True)
         _STRONG = [f"{m}@{ki}" for ki in range(len(merch.KEYS)) for m in full]
         print(f"::notice::audio strong models: {_STRONG}")
     return _STRONG
