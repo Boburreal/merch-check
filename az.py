@@ -563,6 +563,20 @@ if __name__ == "__main__":
                 path = f"/tmp/Аудиозаписи{tag} ({MON[today.month]}-{today:%y}).xlsx"; wb.save(path)
                 send_text(f"🎧 <b>Аудиозаписи{tag}</b> — {', '.join(sorted(want))} изоҳлари қайта текширилди (2 та ИИ келишуви): {len(todo)} ёзув, ўзгарди {ch}, ҳал бўлмади {left}")
                 send_file(path, f"Аудиозаписи{tag} — қайта текширилган")
+    elif mode == "keycheck":                 # which Gemini keys work (status codes only, never the key)
+        import requests, merch
+        print(f"::notice::keys configured: {len(merch.KEYS)}")
+        for ki, k in enumerate(merch.KEYS):
+            for m in ("gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"):
+                try:
+                    x = requests.post(f"{merch.API}/models/{m}:generateContent", headers={"x-goog-api-key": k}, timeout=20,
+                                      json={"contents": [{"parts": [{"text": "OK"}]}], "generationConfig": {"maxOutputTokens": 2}})
+                    why = ""
+                    if x.status_code != 200:
+                        e = x.json().get("error", {}); why = (e.get("status") or "") + " " + str(e.get("message", ""))[:110]
+                    print(f"::notice::key{ki + 1} {m}: {x.status_code} {why}")
+                except Exception as ex:
+                    print(f"::notice::key{ki + 1} {m}: err {str(ex)[:60]}")
     elif mode == "upload":                     # Bobur's own file -> becomes the base
         src = sys.argv[1]
         store.save_bytes('az_file', open(src, 'rb').read())
