@@ -565,7 +565,7 @@ if __name__ == "__main__":
                 send_file(path, f"Аудиозаписи{tag} — қайта текширилган")
     elif mode == "keycheck":                 # which Gemini keys work (status codes only, never the key)
         import requests, merch
-        print(f"::notice::keys configured: {len(merch.KEYS)}")
+        print(f"::notice::keys configured: {len(merch.KEYS)}; last4: {[k.strip()[-4:] for k in merch.KEYS]}")
         for ki, k in enumerate(merch.KEYS):
             for m in ("gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"):
                 try:
