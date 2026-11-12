@@ -547,6 +547,8 @@ if __name__ == "__main__":
             listen(s_, [r for _, r in todo])
             ch = 0
             for row, r in todo:
+                if r['comment'] == 'Текширилмади (ИИ лимити)':       # free limit ended: keep what the file had, never wipe it
+                    continue
                 if row[6].value != r['comment']:
                     ch += 1
                 row[6].value = r['comment']
@@ -555,7 +557,7 @@ if __name__ == "__main__":
             save_file(wb, g)
             left = sum(1 for _, r in todo if r['comment'].startswith('Текширилмади'))
             print(f"::notice::az recheck {g} {sorted(want)}: {len(todo)} rows, changed {ch}, unsure {left}")
-            if os.environ.get("AZ_SEND", "1") == "1" and todo:
+            if os.environ.get("AZ_SEND", "1") == "1" and todo and ch:
                 from telegram import send_text, send_file
                 tag = '' if g == 'tp' else ' МП'
                 path = f"/tmp/Аудиозаписи{tag} ({MON[today.month]}-{today:%y}).xlsx"; wb.save(path)

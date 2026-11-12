@@ -115,11 +115,20 @@ def ai_two(data: bytes, mime: str, prompt: str = None) -> list:
             a = ask_ai(model, data, mime, prompt)
             a['_model'] = model
             out.append(a)
+            if _clean_speech(a):               # a clear, non-repetitive transcript needs no second opinion (saves the free quota)
+                break
         except merch.DailyQuotaExceeded:
             _AUDIO_DEAD.add(model)
         except Exception as e:
             print("::warning::audio model " + model + " " + str(e)[:80])
     return out
+
+
+def _clean_speech(a: dict) -> bool:
+    from collections import Counter
+    t = re.sub(r'\[[^\]]*\]', ' ', str(a.get('transcript') or ''))
+    w = re.findall(r'\w+', re.sub(r'\b[RP]:', ' ', t).lower())
+    return len(w) >= 12 and Counter(w).most_common(1)[0][1] / len(w) <= 0.35
 
 
 MIME = {"aac": "audio/aac", "m4a": "audio/mp4", "mp3": "audio/mp3", "ogg": "audio/ogg", "wav": "audio/wav", "webm": "audio/webm",
