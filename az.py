@@ -38,7 +38,56 @@ short and concrete (1-2 sentences), for example:
 - if the talk is NOT about our work, name its topic: "Иш ҳақида эмас: шахсий суҳбат (оила, соғлиқ ҳақида)", "Иш ҳақида эмас: бошқа мижоз билан савдо",
 - "Маълумот йўқ (овоз йўқ / фақат шовқин)" when nobody talks or nothing can be understood.
 Write only what is really heard; never guess.
-Return ONLY JSON {"transcript": "...", "comment": "..."}"""
+Rules: the comment may name a product ONLY if that product is audible in your transcript; "Маълумот йўқ" ONLY if the transcript is "[no speech]".
+Return ONLY JSON {"transcript": "...", "comment": "...", "speech_seconds": number}"""
+
+
+STEMS = {'Риномакс': ('rinomaks', 'rinomax', 'риномакс', 'риномакс'), 'Форсил': ('forsil', 'fortsil', 'форсил', 'форцил'),
+         'Риноксил': ('rinoksil', 'rinoxil', 'риноксил'), 'Мирамистин': ('miramistin', 'мирамистин'),
+         'Эрегра': ('eregra', 'эрегра'), 'Тивомакс': ('tivomaks', 'tivomax', 'тивомакс'),
+         'Триомакс': ('triomaks', 'triomax', 'триомакс'), 'Альцетро': ('altsetro', 'alcetro', 'альцетро', 'алцетро'),
+         'Авирол': ('avirol', 'авирол')}
+NOSPEECH = 'Маълумот йўқ (овоз йўқ / фақат шовқин)'
+UNSURE = 'Текширилмади (ИИ келишмади)'
+
+
+def _words(t):
+    t = re.sub(r'\[[^\]]*\]', ' ', str(t or ''))
+    t = re.sub(r'\b[RP]:', ' ', t)
+    return re.findall(r'\w+', t.lower())
+
+
+def speechless(a):
+    w = _words(a.get('transcript'))
+    return len(w) < 4 or (a.get('speech_seconds') is not None and float(a.get('speech_seconds') or 0) < 3 and len(w) < 10)
+
+
+def repetitive(a):
+    from collections import Counter
+    w = _words(a.get('transcript'))
+    return len(w) >= 12 and Counter(w).most_common(1)[0][1] / len(w) > 0.35
+
+
+def judge(answers):
+    """Comment for one recording from up to two independent model answers.
+    'no data' only when TWO different models both heard no speech; a product is named only if it is in the transcript."""
+    if not answers:
+        return 'Текширилмади (ИИ лимити)'
+    good = [a for a in answers if not speechless(a) and not repetitive(a)]
+    silent = [a for a in answers if speechless(a)]
+    if not good:
+        if len(silent) == len(answers) and len(answers) >= 2:
+            return NOSPEECH
+        return UNSURE if len(answers) >= 2 else 'Текширилмади (ИИ лимити)'
+    best = max(good, key=lambda a: len(_words(a.get('transcript'))))
+    tr = ' '.join(str(x.get('transcript') or '') for x in good).lower()
+    com = str(best.get('comment') or '').strip()
+    if com.startswith('Маълумот йўқ'):
+        com = 'Суҳбат бўлган, лекин аниқ мавзуси эшитилмади'
+    for prod, stems in STEMS.items():
+        if prod.lower() in com.lower() and not any(st in tr for st in stems):
+            return 'Суҳбат бўлган, лекин компания маҳсулотлари аниқ эшитилмади'
+    return com
 
 
 def short_region(name: str):
@@ -173,14 +222,19 @@ def pick(day: dt.date, visits: pd.DataFrame, checked: set, last_seen: dict, seed
 
 
 def listen(s, rows):
+    from sales import switch_project
     cur = None
     for r in rows:
         r['dur'], r['comment'] = None, ''
         try:
-            if r.get('src') and r['src'] != cur:          # the visit page needs the project the visit was entered in
-                from sales import switch_project
-                switch_project(s, r['src']); cur = r['src']
-            url = audio.audio_url(s, r['id'])
+            first = r.get('src') or cur or 1
+            url = None
+            for p in [first] + [x for x in (1, 4) if x != first]:     # the visit page needs the project it was entered in
+                if p != cur:
+                    switch_project(s, p); cur = p
+                url = audio.audio_url(s, r['id'])
+                if url:
+                    break
             if not url:
                 r['comment'] = 'Запись йўқ'; continue
             ext = url.split('?')[0].rsplit('.', 1)[-1].lower()
@@ -189,10 +243,9 @@ def listen(s, rows):
                 f.write(data); f.flush()
                 m = audio.measure(f.name)
             r['dur'] = m['dur']
-            if m['dur'] < 5 or m['silence_pct'] >= 97:
+            if m['dur'] < 5 or m['silence_pct'] >= 97 or (m['mean_db'] is not None and m['mean_db'] < -55):
                 r['comment'] = 'Маълумот йўқ (ёзувда овоз йўқ)'; continue
-            a = audio.ai(data, audio.MIME.get(ext, 'audio/aac'), PROMPT)
-            r['comment'] = str(a.get('comment') or 'Маълумот йўқ').strip()
+            r['comment'] = judge(audio.ai_two(data, audio.MIME.get(ext, 'audio/aac'), PROMPT))
         except Exception as e:
             print("::warning::az listen " + str(e)[:120])
             r['comment'] = r['comment'] or 'Текширилмади (ИИ лимити)'
@@ -475,6 +528,39 @@ if __name__ == "__main__":
         open('drop/claude_audit.key', 'wb').write(ek)
         open('drop/claude_audit.fer', 'wb').write(Fernet(k_).encrypt(json.dumps(out, ensure_ascii=False, default=str).encode()))
         print(f"::notice::az claude_audit {dd}: {len(out)} rows")
+    elif mode == "recheck":                  # re-listen to the SAME rows of given days with the two-model rule, in place
+        from sales import login
+        d1 = dt.date.fromisoformat(os.environ["AZ_FROM"]); d2 = dt.date.fromisoformat(os.environ.get("AZ_TO") or os.environ["AZ_FROM"])
+        want = {f"{d1 + dt.timedelta(days=i):%d.%m}" for i in range((d2 - d1).days + 1)}
+        s_ = login()
+        for g in ((os.environ.get('AZ_GROUP') or 'tp,mp').split(',')):
+            g = g.strip(); wb = load_file(g)
+            if wb is None:
+                continue
+            ws = wb.active; todo = []; day = None
+            for row in ws.iter_rows(min_row=1):
+                if row[1].value == 'Менеджер':
+                    day = str(row[0].value).strip(); continue
+                h = row[7].value
+                if day in want and isinstance(h, str) and '/visits/' in h:
+                    todo.append((row, {'id': int(re.search(r'/visits/(\d+)/', h).group(1)), 'src': 1 if g == 'tp' else 4}))
+            listen(s_, [r for _, r in todo])
+            ch = 0
+            for row, r in todo:
+                if row[6].value != r['comment']:
+                    ch += 1
+                row[6].value = r['comment']
+                if r.get('dur'):
+                    sec = int(round(r['dur'])); row[5].value = dt.time(min(sec // 60, 23), sec % 60)
+            save_file(wb, g)
+            left = sum(1 for _, r in todo if r['comment'].startswith('Текширилмади'))
+            print(f"::notice::az recheck {g} {sorted(want)}: {len(todo)} rows, changed {ch}, unsure {left}")
+            if os.environ.get("AZ_SEND", "1") == "1" and todo:
+                from telegram import send_text, send_file
+                tag = '' if g == 'tp' else ' МП'
+                path = f"/tmp/Аудиозаписи{tag} ({MON[today.month]}-{today:%y}).xlsx"; wb.save(path)
+                send_text(f"🎧 <b>Аудиозаписи{tag}</b> — {', '.join(sorted(want))} изоҳлари қайта текширилди (2 та ИИ келишуви): {len(todo)} ёзув, ўзгарди {ch}, ҳал бўлмади {left}")
+                send_file(path, f"Аудиозаписи{tag} — қайта текширилган")
     elif mode == "upload":                     # Bobur's own file -> becomes the base
         src = sys.argv[1]
         store.save_bytes('az_file', open(src, 'rb').read())

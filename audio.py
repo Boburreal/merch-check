@@ -99,6 +99,29 @@ def ai(data: bytes, mime: str, prompt: str = None, full_first: bool = True) -> d
 _AUDIO_DEAD = set()
 
 
+def ai_two(data: bytes, mime: str, prompt: str = None) -> list:
+    """Up to two answers from two DIFFERENT strong (non-lite) free models. Lite models are never used for audio:
+    they invent or miss speech. Fewer than two answers = the caller must not claim 'no speech'."""
+    merch.pick_model()
+    if os.environ.get("GEMINI_MODEL"):
+        chain = [os.environ["GEMINI_MODEL"]]
+    else:
+        chain = [m for m in merch._CHAIN if m not in merch._DEAD and m not in _AUDIO_DEAD and 'lite' not in m]
+    out = []
+    for model in chain:
+        if len(out) == 2:
+            break
+        try:
+            a = ask_ai(model, data, mime, prompt)
+            a['_model'] = model
+            out.append(a)
+        except merch.DailyQuotaExceeded:
+            _AUDIO_DEAD.add(model)
+        except Exception as e:
+            print("::warning::audio model " + model + " " + str(e)[:80])
+    return out
+
+
 MIME = {"aac": "audio/aac", "m4a": "audio/mp4", "mp3": "audio/mp3", "ogg": "audio/ogg", "wav": "audio/wav", "webm": "audio/webm",
         "3gp": "audio/3gpp", "amr": "audio/amr", "flac": "audio/flac"}
 

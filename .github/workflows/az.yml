@@ -4,7 +4,7 @@ on:
     inputs:
       from: {description: "YYYY-MM-DD", default: ""}
       to: {description: "YYYY-MM-DD", default: ""}
-      mode: {description: "bo'sh / split / review / relisten", default: ""}
+      mode: {description: "bo'sh / split / review / relisten / recheck", default: ""}
       model: {description: "Gemini model (bo'sh = avtomatik)", default: ""}
       group: {description: "tp / mp / tp,mp (bo'sh = ikkalasi)", default: ""}
       redo: {description: "1 = shu kunlar blokini o'chirib qaytadan tuzish", default: ""}
@@ -14,7 +14,7 @@ permissions:
 jobs:
   a:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
