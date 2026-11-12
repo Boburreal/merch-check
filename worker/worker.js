@@ -23,9 +23,10 @@ function jobs(d) {
   const h = d.getUTCHours(), m = d.getUTCMinutes(), wd = d.getUTCDay(), md = d.getUTCDate();
   const out = [];
   // har soat; hisobot paytida emas (ikkalasi bir Sales akkauntida loyihani almashtirib, bir-birini sekinlashtiradi)
-  if (m === 5 && h !== 12 && h !== 3 && h !== 4) out.push(["snapshot.yml", {}]);
+  if (m === 5 && h !== 12 && h !== 3 && h !== 4 && h !== 8 && h !== 9) out.push(["snapshot.yml", {}]);
   if (h === 12 && m === 5) out.push(["report.yml", { mode: "daily", auto: "1" }]);       // 17:05 -> fayl 17:45–17:55
   if (h === 3 && m === 30) out.push(["report.yml", { mode: "update", auto: "1" }]);      // 08:30
+  if (h === 8 && m === 10) out.push(["az.yml", {}]);                                      // 13:10 Аудиозаписи (kechagi kun, ТП+МП): Gemini kunlik limiti 13:00 da yangilanadi
   if (wd === 0 && h === 18 && m === 0) out.push(["report.yml", { mode: "weekly", auto: "1" }]);  // yakshanba 23:00
   if (md === 1 && h === 4 && m === 0) out.push(["report.yml", { mode: "monthly", auto: "1" }]);  // 1-sana 09:00
   return out;

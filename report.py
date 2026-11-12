@@ -339,7 +339,7 @@ if AUTO:
     _row = pd.DataFrame({'key': [SENT_KEY]})
     store.save('sent', pd.concat([_sent, _row]).tail(400) if len(_sent) else _row)
 print("::notice::telegram=sent")
-if MODE in ("daily", "update"):         # Аудиозаписи: the day's block (daily adds today's, update refills / adds yesterday's)                    # Аудиозаписи file: yesterday's block (6 ТП x 2 recordings)
+if MODE in ("daily", "update") and os.environ.get("AZ_IN_REPORT"):         # Аудиозаписи (2026-11-12: endi az.yml da 13:10 da, Worker ishga tushiradi): the day's block (daily adds today's, update refills / adds yesterday's)                    # Аудиозаписи file: yesterday's block (6 ТП x 2 recordings)
     try:
         import az
         az.run([d2])
