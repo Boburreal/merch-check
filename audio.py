@@ -99,14 +99,30 @@ def ai(data: bytes, mime: str, prompt: str = None, full_first: bool = True) -> d
 _AUDIO_DEAD = set()
 
 
+_STRONG = None
+
+
+def _strong() -> list:
+    """Strong (non-lite) flash models x all keys, WITHOUT merch's 10-second probe (it dropped the slow strong models).
+    Order: every strong model on key 1 first, then on key 2, ... so the first two answers come from two different models."""
+    global _STRONG
+    if _STRONG is None:
+        r = requests.get(f"{merch.API}/models", headers={"x-goog-api-key": merch.KEYS[0]}, timeout=30)
+        r.raise_for_status()
+        names = [m["name"].split("/")[-1] for m in r.json().get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
+        full = sorted([n for n in names if "flash" in n and "lite" not in n and not any(x in n for x in ("image", "tts", "live", "audio", "exp", "preview", "thinking"))], reverse=True)
+        _STRONG = [f"{m}@{ki}" for ki in range(len(merch.KEYS)) for m in full]
+        print(f"::notice::audio strong models: {_STRONG}")
+    return _STRONG
+
+
 def ai_two(data: bytes, mime: str, prompt: str = None) -> list:
     """Up to two answers from two DIFFERENT strong (non-lite) free models. Lite models are never used for audio:
     they invent or miss speech. Fewer than two answers = the caller must not claim 'no speech'."""
-    merch.pick_model()
     if os.environ.get("GEMINI_MODEL"):
         chain = [os.environ["GEMINI_MODEL"]]
     else:
-        chain = [m for m in merch._CHAIN if m not in merch._DEAD and m not in _AUDIO_DEAD and 'lite' not in m]
+        chain = [m for m in _strong() if m not in _AUDIO_DEAD]
     out = []
     for model in chain:
         if len(out) == 2:
