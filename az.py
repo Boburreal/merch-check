@@ -392,6 +392,89 @@ if __name__ == "__main__":
         from telegram import send_file
         send_file(path, "Аудиозаписи — изоҳлар кучлироқ ИИ билан қайта ёзилди")
         print(f"::notice::az relisten: {len(todo)} rows, changed {ch}, left {sum(1 for _, r in todo if not r['comment'] or r['comment'].startswith('Текширилмади'))}")
+    elif mode == "claude_audit":              # read-only check of one day's rows for Claude (encrypted to drop_pub.pem)
+        import json, vcache, roster as R
+        from sales import login, switch_project
+        from cryptography.fernet import Fernet
+        from cryptography.hazmat.primitives import serialization, hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+        day = dt.date.fromisoformat(os.environ["AZ_FROM"]) if os.environ.get("AZ_FROM") else today - dt.timedelta(days=1)
+        dd = f"{day:%d.%m}"
+        parts = R.load(); regions = dict(zip(parts['mp']['key'], parts['mp']['region']))
+        d1m = day.replace(day=1)
+        raw_tp, raw_mp = R.regroup(vcache.get('tp', d1m, day), vcache.get('mp', d1m, day), parts['tp'], parts['mp'])
+        Q = ("Listen to this whole pharmacy visit recording (Uzbek/Russian speech, maybe noise). First a faithful transcript with speaker turns "
+             "R: (sales rep) and P: (pharmacist/other), [...] for unclear parts, [no speech] only if nobody talks. Then ONLY from the transcript: "
+             "topic in Russian (1 sentence), which of our products (Риномакс, Форсил, Риноксил, Мирамистин, Эрегра, Тивомакс, Триомакс, Альцетро, Авирол) "
+             "were named, whether остатка/stock was asked, whether it is a work conversation, speech_seconds. "
+             'Return ONLY JSON {"transcript": "...", "topic": "...", "products": [], "stock_asked": true/false, "work_talk": true/false, "speech_seconds": number}')
+        s_ = login(); out = []; cur = None
+        for grp, raw in (('tp', raw_tp), ('mp', raw_mp)):
+            wb = load_file(grp)
+            if wb is None:
+                continue
+            ws = wb.active
+            heads = [r for r in range(1, ws.max_row + 1) if ws.cell(r, 2).value == 'Менеджер']
+            allb = [(str(ws.cell(h, 1).value).strip(), h) for h in heads]
+            seen_prev = {}
+            for i, h in enumerate(heads):
+                end = (heads[i + 1] - 1) if i + 1 < len(heads) else ws.max_row
+                bday = str(ws.cell(h, 1).value).strip()
+                for r in range(h + 1, end + 1):
+                    if bday != dd:
+                        who = ws.cell(r, 2).value
+                        if who:
+                            seen_prev.setdefault(key(who), []).append(bday)
+            for i, h in enumerate(heads):
+                if str(ws.cell(h, 1).value).strip() != dd:
+                    continue
+                end = (heads[i + 1] - 1) if i + 1 < len(heads) else ws.max_row
+                for r in range(h + 1, end + 1):
+                    row = [ws.cell(r, j).value for j in range(1, 9)]
+                    if not (isinstance(row[7], str) and '/visits/' in row[7]):
+                        continue
+                    vid = int(re.search(r'/visits/(\d+)/', row[7]).group(1))
+                    rec = {'grp': grp, 'xl_row': r, 'who': row[1], 'reg': row[2], 'date': str(row[3]), 'obj': row[4],
+                           'dur_xl': str(row[5]), 'comment': row[6], 'link': row[7], 'id': vid, 'prev_days_checked': seen_prev.get(key(row[1]), [])}
+                    m = raw[raw['#'].astype(int) == vid]
+                    if len(m):
+                        x = m.iloc[0]
+                        rec['sales'] = {'who': x['Фарм. пред'], 'date': x['Дата'], 'type': x['Тип визита'], 'obj': x['Контр-агент/Врач'],
+                                        'end': x.get('Время завершения визита'), 'src': int(x['src'])}
+                        v_day = raw[(raw['Дата'] == x['Дата']) & (raw['Фарм. пред'] == x['Фарм. пред']) & raw['Тип визита'].fillna('').str.contains('аптек|контрагент', case=False)]
+                        rec['mgr_visits_that_day'] = int(len(v_day))
+                    else:
+                        rec['sales'] = None
+                    rec['exp_reg'] = short_region(row[1] or '') if grp == 'tp' else FULL2SHORT.get(regions.get(key(row[1] or '')))
+                    out.append(rec)
+        out.sort(key=lambda z: (z['sales'] or {}).get('src', 1))
+        for rec in out:
+            try:
+                src = (rec['sales'] or {}).get('src') or (1 if rec['grp'] == 'tp' else 4)
+                if src != cur:
+                    switch_project(s_, src); cur = src
+                url = audio.audio_url(s_, rec['id'])
+                rec['has_audio'] = bool(url)
+                if url:
+                    ext = url.split('?')[0].rsplit('.', 1)[-1].lower()
+                    data = s_.get(url, timeout=120).content
+                    with tempfile.NamedTemporaryFile(suffix='.' + ext) as f:
+                        f.write(data); f.flush(); rec['m'] = audio.measure(f.name)
+                    if rec['m']['dur'] >= 5 and rec['m']['silence_pct'] < 97:
+                        rec['ai'] = audio.ai(data, audio.MIME.get(ext, 'audio/aac'), Q)
+            except Exception as e:
+                rec['err'] = str(e)[:150]
+        try:
+            switch_project(s_, 1)
+        except Exception:
+            pass
+        k_ = Fernet.generate_key()
+        pub = serialization.load_pem_public_key(open('drop_pub.pem', 'rb').read())
+        ek = pub.encrypt(k_, padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+        os.makedirs('drop', exist_ok=True)
+        open('drop/claude_audit.key', 'wb').write(ek)
+        open('drop/claude_audit.fer', 'wb').write(Fernet(k_).encrypt(json.dumps(out, ensure_ascii=False, default=str).encode()))
+        print(f"::notice::az claude_audit {dd}: {len(out)} rows")
     elif mode == "upload":                     # Bobur's own file -> becomes the base
         src = sys.argv[1]
         store.save_bytes('az_file', open(src, 'rb').read())
