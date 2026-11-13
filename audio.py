@@ -111,6 +111,7 @@ def _strong() -> list:
         r.raise_for_status()
         names = [m["name"].split("/")[-1] for m in r.json().get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
         full = sorted([n for n in names if "flash" in n and "lite" not in n and not any(x in n for x in ("image", "tts", "live", "audio", "exp", "preview", "thinking", "omni", "latest", "2.5"))], reverse=True)
+        full.sort(key=lambda n: (0 if ("3.6" in n or "3.5" in n) else 1))      # 3.7/3.8 often time out: last
         _STRONG = [f"{m}@{ki}" for ki in range(len(merch.KEYS)) for m in full]
         print(f"::notice::audio strong models: {_STRONG}")
     return _STRONG
