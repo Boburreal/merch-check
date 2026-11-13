@@ -1,5 +1,7 @@
 name: Аудиозаписи (qo'lda)
 on:
+  schedule:
+    - cron: '10 8 * * *'      # 13:10 Toshkent (Worker ham shu vaqtda ishga tushiradi; takror bo'lsa 'nothing new')
   workflow_dispatch:
     inputs:
       from: {description: "YYYY-MM-DD", default: ""}
