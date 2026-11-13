@@ -57,15 +57,15 @@ def measure(path: str) -> dict:
             "mean_db": float(mean.group(1)) if mean else None, "max_db": float(peak.group(1)) if peak else None}
 
 
-def ask_ai(model: str, data: bytes, mime: str, prompt: str = None) -> dict:
+def ask_ai(model: str, data: bytes, mime: str, prompt: str = None, attempts: int = 5, timeout: int = 240) -> dict:
     import base64
     body = {"contents": [{"parts": [{"text": prompt or PROMPT}, {"inline_data": {"mime_type": mime, "data": base64.b64encode(data).decode()}}]}],
             "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}}
     wait = 20
-    for attempt in range(5):
+    for attempt in range(attempts):
         _name, _key = merch.split(model)
         r = requests.post(f"{merch.API}/models/{_name}:generateContent", headers={"x-goog-api-key": _key},
-                          json=body, timeout=240)
+                          json=body, timeout=timeout)
         if r.status_code in (403, 404) or (r.status_code == 429 and ("PerDay" in r.text or "per day" in r.text.lower())):
             raise merch.DailyQuotaExceeded(f"{model}: {r.status_code}")
         if r.status_code in (429, 500, 503):
@@ -129,14 +129,15 @@ def ai_two(data: bytes, mime: str, prompt: str = None) -> list:
         if len(out) == 2:
             break
         try:
-            a = ask_ai(model, data, mime, prompt)
+            a = ask_ai(model, data, mime, prompt, attempts=3, timeout=100)
             a['_model'] = model
             out.append(a)
             if _clean_speech(a):               # a clear, non-repetitive transcript needs no second opinion (saves the free quota)
                 break
         except merch.DailyQuotaExceeded:
             _AUDIO_DEAD.add(model)
-        except Exception as e:
+        except Exception as e:                  # slow / overloaded model: skip it for the rest of this run (it wasted an hour today)
+            _AUDIO_DEAD.add(model)
             print("::warning::audio model " + model + " " + str(e)[:80])
     return out
 
