@@ -305,6 +305,9 @@ def write_block(ws, day: dt.date, rows):
 
 
 
+BACKLOG_DAYS = 2
+
+
 def backlog(grp='tp', send=True):
     """Days before 12.11 were listened to once, with the old single-model rule (unreliable). Re-listen to them with the
     two-model rule, newest day first, one day at a time, until the free Gemini limit ends. Done days are remembered."""
@@ -342,7 +345,7 @@ def backlog(grp='tp', send=True):
             done.add(d); finished.append(d)
         save_file(wb, grp)
         store.save_bytes(key_, json.dumps(sorted(done)).encode())
-        if limit:
+        if limit or len(finished) >= BACKLOG_DAYS:       # at most 2 old days per group per run, so ТП does not eat all of МП's limit
             break
     print(f"::notice::az backlog {grp}: finished days {finished}, changed {changed}, left {len([d for d in todo_days if d not in done])}")
     if send and changed:
