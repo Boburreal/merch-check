@@ -44,6 +44,7 @@ jobs:
           SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           ROSTER_KEY: ${{ secrets.ROSTER_KEY }}
           TODAY: ${{ inputs.today }}

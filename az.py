@@ -304,6 +304,56 @@ def write_block(ws, day: dt.date, rows):
             c.hyperlink = c.value
 
 
+
+def backlog(grp='tp', send=True):
+    """Days before 12.11 were listened to once, with the old single-model rule (unreliable). Re-listen to them with the
+    two-model rule, newest day first, one day at a time, until the free Gemini limit ends. Done days are remembered."""
+    import json
+    from sales import login
+    key_ = 'az_rechecked_' + grp
+    raw = store.load_bytes(key_)
+    done = set(json.loads(raw.decode())) if raw else set()
+    wb = load_file(grp)
+    if wb is None:
+        return 0
+    ws = wb.active
+    rows_by_day, day = {}, None
+    for row in ws.iter_rows(min_row=1):
+        if row[1].value == 'Менеджер':
+            day = str(row[0].value).strip(); continue
+        h = row[7].value
+        if day and isinstance(h, str) and '/visits/' in h:
+            rows_by_day.setdefault(day, []).append(row)
+    todo_days = [d for d in rows_by_day if d not in done and d[3:5] == '11' and d[:2].isdigit() and int(d[:2]) < 12]
+    todo_days.sort(key=lambda d: -int(d[:2]))
+    if not todo_days:
+        print(f"::notice::az backlog {grp}: nothing left"); return 0
+    s_ = login(); changed = 0; finished = []
+    for d in todo_days:
+        items = [(r, {'id': int(re.search(r'/visits/(\d+)/', r[7].value).group(1)), 'src': 1 if grp == 'tp' else 4}) for r in rows_by_day[d]]
+        listen(s_, [x for _, x in items])
+        limit = False
+        for r, x in items:
+            if x['comment'] == 'Текширилмади (ИИ лимити)':
+                limit = True; continue
+            if r[6].value != x['comment']:
+                r[6].value = x['comment']; changed += 1
+        if not limit:
+            done.add(d); finished.append(d)
+        save_file(wb, grp)
+        store.save_bytes(key_, json.dumps(sorted(done)).encode())
+        if limit:
+            break
+    print(f"::notice::az backlog {grp}: finished days {finished}, changed {changed}, left {len([d for d in todo_days if d not in done])}")
+    if send and changed:
+        from telegram import send_text, send_file
+        tag = '' if grp == 'tp' else ' МП'
+        path = f"/tmp/Аудиозаписи{tag} ({MON[dt.datetime.now(TZ).month]}-{dt.datetime.now(TZ):%y}).xlsx"; wb.save(path)
+        send_text(f"🎧 <b>Аудиозаписи{tag}</b> — олдинги кунлар изоҳлари қайта текширилди ({', '.join(finished) or 'қисман'}): ўзгарди {changed}")
+        send_file(path, f"Аудиозаписи{tag} — қайта текширилган")
+    return changed
+
+
 def run(days, send=True, grp='tp'):
     """Add blocks for the given days (oldest first, so the newest ends on top) and send the file. grp: 'tp' or 'mp'."""
     import vcache, roster as R
@@ -590,3 +640,8 @@ if __name__ == "__main__":
                 run(_days, grp=_g.strip())
             except Exception as e:
                 print(f"::error::az {_g}: {str(e)[:200]}")
+            if not os.environ.get("AZ_NO_BACKLOG"):
+                try:
+                    backlog(_g.strip())
+                except Exception as e:
+                    print(f"::warning::az backlog {_g}: {str(e)[:150]}")
