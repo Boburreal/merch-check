@@ -630,6 +630,22 @@ if __name__ == "__main__":
                     print(f"::notice::key{ki + 1} {m}: {x.status_code} {why}")
                 except Exception as ex:
                     print(f"::notice::key{ki + 1} {m}: err {str(ex)[:60]}")
+    elif mode == "stats":                    # counts only: how many rows per day are still unverified
+        for g in ('tp', 'mp'):
+            wb = load_file(g)
+            if wb is None:
+                continue
+            ws = wb.active; day = None; st = {}
+            for row in ws.iter_rows(min_row=1):
+                if row[1].value == 'Менеджер':
+                    day = str(row[0].value).strip(); st.setdefault(day, [0, 0, 0, 0]); continue
+                h = row[7].value
+                if day and isinstance(h, str) and '/visits/' in h:
+                    c = str(row[6].value or '')
+                    i = 1 if c.startswith('Текширилмади') else (2 if c.startswith('Маълумот йўқ') else 3)
+                    st[day][0] += 1; st[day][i] += 1
+            raw = store.load_bytes('az_rechecked_' + g)
+            print(f"::notice::az stats {g} [rows, unchecked, no-data, other] {st}; rechecked-days {raw.decode() if raw else []}")
     elif mode == "upload":                     # Bobur's own file -> becomes the base
         src = sys.argv[1]
         store.save_bytes('az_file', open(src, 'rb').read())
