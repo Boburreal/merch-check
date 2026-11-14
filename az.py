@@ -659,7 +659,8 @@ if __name__ == "__main__":
                 run(_days, grp=_g.strip())
             except Exception as e:
                 print(f"::error::az {_g}: {str(e)[:200]}")
-            if not os.environ.get("AZ_NO_BACKLOG"):
+        if not os.environ.get("AZ_NO_BACKLOG"):        # old days only AFTER the new day + unchecked rows of BOTH groups (ТП used to eat МП's limit)
+            for _g in ((os.environ.get('AZ_GROUP') or 'tp,mp').split(',')):
                 try:
                     backlog(_g.strip())
                 except Exception as e:
