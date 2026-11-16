@@ -157,6 +157,17 @@ def load_people():
         return empty, empty, None
 
 
+def short_text(tp, mp, label):
+    """Short copy-paste text: fact visits and unique objects (ТП, ФП/МП pharmacy, ФП/МП doctor)."""
+    uq = lambda d: len(d.drop_duplicates('Контр-агент/Врач'))
+    mt = mp['Тип визита'].fillna('').str.lower()
+    ph, doc = mp[~mt.str.contains('врач')], mp[mt.str.contains('врач')]
+    return "\n".join([label, "",
+                      f"ТП факт визит: {len(tp)}", f"Уникальный: {uq(tp)}", "",
+                      f"ФП факт визит (контрагент): {len(ph)}", f"Уникальный: {uq(ph)}", "",
+                      f"ФП факт визит (врач): {len(doc)}", f"Уникальный: {uq(doc)}"])
+
+
 d1, d2, title = period()
 if MODE == "update":                # pharmacy coordinates (for "7+ pharmacies at one point") - once a day, in the morning
     try:
@@ -325,6 +336,8 @@ else:
     msg += ["", "Шубҳали улуши энг юқори ТП:"] + [f"• {k}: {v * 100:.0f}%" for k, v in top.items() if v > 0]
 
 send_text("\n".join(msg))
+if MODE == "daily" and d2.weekday() == 0:      # Monday report: short text (month-to-date) for copy-paste
+    send_text(short_text(tp, mp, f"01–{d2:%d.%m.%Y}"))
 if MODE == "weekly":              # short copy-paste text, separate message
     send_text("\n".join(short))
 if os.environ.get('ONLY_TP'):
