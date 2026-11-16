@@ -13,6 +13,7 @@ from sales import BASE
 
 TZ = ZoneInfo("Asia/Tashkent")
 PER_DAY, PER_TP = 6, 2
+MIN_TP = 1    # kam vizitli kunlarda (masalan yakshanba) ham xodim tanlash uchun: kamida shuncha vizit bo'lsa yetarli
 STORE = {'tp': 'az_file', 'mp': 'az_file_mp'}
 LABEL = {'tp': 'ТП', 'mp': 'МП'}
 FULL2SHORT = {'Бухарская': 'Бухара', 'Джизакская': 'Джизак', 'Навоийская': 'Наваи', 'Р.Каракалпакстан': 'Нукус',
@@ -196,7 +197,7 @@ def pick(day: dt.date, visits: pd.DataFrame, checked: set, last_seen: dict, seed
     if _rg:                                   # manual run for one region only
         v = v[v['reg'].str.lower().str.startswith(_rg[:5])]
     cnt = v.groupby('who').size()
-    people = [w for w in cnt.index if cnt[w] >= PER_TP]
+    people = [w for w in cnt.index if cnt[w] >= MIN_TP]
     fresh = [w for w in people if key(w) not in checked]
     old = sorted([w for w in people if key(w) in checked], key=lambda w: last_seen.get(key(w), ''))
     rnd.shuffle(fresh)
@@ -213,7 +214,7 @@ def pick(day: dt.date, visits: pd.DataFrame, checked: set, last_seen: dict, seed
     rows = []
     for w in sorted(chosen, key=lambda x: (v[v.who == x]['reg'].iloc[0], x)):
         vv = v[v.who == w]
-        ids = rnd.sample(list(vv['#'].astype(int)), PER_TP)
+        ids = rnd.sample(list(vv['#'].astype(int)), min(PER_TP, len(vv)))
         for i in sorted(ids):
             r = vv[vv['#'].astype(int) == i].iloc[0]
             rows.append({'who': w, 'reg': r['reg'], 'id': i, 'src': int(r['src']) if 'src' in r and pd.notna(r['src']) else (1 if grp == 'tp' else 4),
@@ -407,7 +408,7 @@ def run(days, send=True, grp='tp'):
         if tmpl:                                       # new МП file: drop the copied style-template block (it is now the last one)
             ws.delete_rows(ws.max_row - tmpl + 1, tmpl); wb._az_tmpl = 0; _relink(ws)
         added.append((d, rows))
-        print(f"::notice::az {grp} {d}: {len(rows) // PER_TP} {LABEL[grp]}, {len(rows)} rows")
+        print(f"::notice::az {grp} {d}: {len({r['who'] for r in rows})} {LABEL[grp]}, {len(rows)} rows")
     if added and grp == 'tp':
         target = max(d for d, _ in added).month
         if any(int(b[0][3:5]) != target for b in blocks(ws) if b[0][3:5].isdigit()):
@@ -427,7 +428,7 @@ def run(days, send=True, grp='tp'):
             lines.append(f"• олдин ИИ лимити туфайли текширилмай қолган {refilled} та ёзув тингланди")
         for d, rows in added:
             bad = sum(1 for r in rows if r['comment'].startswith(('Маълумот йўқ', 'Запись йўқ')))
-            lines.append(f"• {d:%d.%m}: {len(rows) // PER_TP} {LABEL[grp]}, {len(rows)} ёзув, «Маълумот йўқ / ёзув йўқ»: {bad}")
+            lines.append(f"• {d:%d.%m}: {len({r['who'] for r in rows})} {LABEL[grp]}, {len(rows)} ёзув, «Маълумот йўқ / ёзув йўқ»: {bad}")
         send_text("\n".join(lines))
         send_file(path, f"Аудиозаписи{tag} — янги кунлар тепада")
 
