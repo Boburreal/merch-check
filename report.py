@@ -252,6 +252,12 @@ tp.loc[tp['f_closeup'], 'Изоҳ'] = (tp.loc[tp['f_closeup'], 'Изоҳ'] + '; 
 tp = remember(tp, 'ТП', 'tp')
 mp = remember(mp, 'МП', 'mp')
 
+_uq = lambda d: len(d.drop_duplicates('Контр-агент/Врач'))
+_mt = mp['Тип визита'].fillna('').str.lower()
+_ph, _doc = mp[~_mt.str.contains('врач')], mp[_mt.str.contains('врач')]
+print(f"::notice::unique {f1}..{d2} tp_fact={len(tp)} tp_uniq={_uq(tp)} "
+      f"mp_ph_fact={len(_ph)} mp_ph_uniq={_uq(_ph)} mp_doc_fact={len(_doc)} mp_doc_uniq={_uq(_doc)}")
+
 loc_changes = pd.DataFrame()
 if len(loc_log):
     w = pd.to_datetime(loc_log['Аниқланди'], format='%d.%m.%Y %H:%M', errors='coerce').dt.date
