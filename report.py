@@ -183,7 +183,10 @@ if MODE in ("daily", "update"):
 else:
     f1 = d1
 import vcache                            # cached month-to-date: finished months once, current month topped up daily
-raw_tp, raw_mp = R.regroup(vcache.get('tp', f1, d2), vcache.get('mp', f1, d2), tp_people, mp_people)   # roster decides ТП / МП
+if os.environ.get('NO_REGROUP'):            # tarixiy oylar: shu paytdagi roster bilan qayta guruhlamasdan, Sales loyihasi bo'yicha
+    raw_tp, raw_mp = vcache.get('tp', f1, d2), vcache.get('mp', f1, d2)
+else:
+    raw_tp, raw_mp = R.regroup(vcache.get('tp', f1, d2), vcache.get('mp', f1, d2), tp_people, mp_people)   # roster decides ТП / МП
 tp = prepare(raw_tp, 'ТП', loc_log)
 tp = tp[~tp['Лавозим'].str.contains('Медицин')]
 mp = prepare(raw_mp, 'МП', loc_log)
