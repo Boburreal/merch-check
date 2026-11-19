@@ -64,16 +64,24 @@ def ask_ai(model: str, data: bytes, mime: str, prompt: str = None, attempts: int
     wait = 20
     for attempt in range(attempts):
         _name, _key = merch.split(model)
-        r = requests.post(f"{merch.API}/models/{_name}:generateContent", headers={"x-goog-api-key": _key},
-                          json=body, timeout=timeout)
-        if r.status_code in (403, 404) or (r.status_code == 429 and ("PerDay" in r.text or "per day" in r.text.lower())):
-            raise merch.DailyQuotaExceeded(f"{model}: {r.status_code}")
-        if r.status_code in (429, 500, 503):
-            time.sleep(wait); wait = min(wait * 2, 120); continue
-        r.raise_for_status()
-        txt = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip().removeprefix("```json").removesuffix("```")
-        d = json.loads(txt)
-        return d[0] if isinstance(d, list) else d
+        try:
+            r = requests.post(f"{merch.API}/models/{_name}:generateContent", headers={"x-goog-api-key": _key},
+                              json=body, timeout=timeout)
+            if r.status_code in (403, 404) or (r.status_code == 429 and ("PerDay" in r.text or "per day" in r.text.lower())):
+                raise merch.DailyQuotaExceeded(f"{model}: {r.status_code}")
+            if r.status_code in (429, 500, 503):
+                raise RuntimeError(f"{r.status_code}")
+            r.raise_for_status()
+            txt = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip().removeprefix("```json").removesuffix("```")
+            d = json.loads(txt)
+            return d[0] if isinstance(d, list) else d
+        except merch.DailyQuotaExceeded:
+            raise
+        except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError, RuntimeError) as e:
+            # network timeout / 429-500-503 / malformed JSON - all transient, worth a retry before giving up on this model
+            if attempt == attempts - 1:
+                raise RuntimeError(f"Gemini audio: too many retries ({str(e)[:60]})")
+            time.sleep(wait); wait = min(wait * 2, 120)
     raise RuntimeError("Gemini audio: too many retries")
 
 
