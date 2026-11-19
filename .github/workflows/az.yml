@@ -2,6 +2,8 @@ name: Аудиозаписи (qo'lda)
 on:
   schedule:
     - cron: '10 8 * * *'      # 13:10 Toshkent (Worker ham shu vaqtda ishga tushiradi; takror bo'lsa 'nothing new')
+    - cron: '10 10 * * 1-6'   # 15:10 Toshkent, Душ-Шан: Google vaqtincha uzilishida qayta urinish (refill/backlog)
+    - cron: '10 11 * * 1-6'   # 16:10 Toshkent, Душ-Шан: shu kuni yana bir qayta urinish, 17:05dagi report'dan oldin
   workflow_dispatch:
     inputs:
       from: {description: "YYYY-MM-DD", default: ""}
