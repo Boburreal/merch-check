@@ -14,6 +14,8 @@ from sales import BASE
 TZ = ZoneInfo("Asia/Tashkent")
 PER_DAY, PER_TP = 6, 2
 MIN_TP = 1    # kam vizitli kunlarda (masalan yakshanba) ham xodim tanlash uchun: kamida shuncha vizit bo'lsa yetarli
+TOPUP, TOPUP_HOUR = 3, 16   # bugungi kun uchun: TOPUP_HOUR dan keyin kunlik maqsad PER_DAY+TOPUP ga ko'tariladi
+                            # (tushdan keyingi vizitlar ham namunaga kirsin, lekin alohida kun bo'lib emas - shu kunning o'ziga qo'shiladi)
 STORE = {'tp': 'az_file', 'mp': 'az_file_mp'}
 LABEL = {'tp': 'ТП', 'mp': 'МП'}
 FULL2SHORT = {'Бухарская': 'Бухара', 'Джизакская': 'Джизак', 'Навоийская': 'Наваи', 'Р.Каракалпакстан': 'Нукус',
@@ -180,10 +182,14 @@ def key(name):
     return R.key(name)
 
 
-def pick(day: dt.date, visits: pd.DataFrame, checked: set, last_seen: dict, seed: int, grp='tp', regions=None):
-    """6 people from different regions who visited pharmacies that day; first those not checked this month.
+def pick(day: dt.date, visits: pd.DataFrame, checked: set, last_seen: dict, seed: int, grp='tp', regions=None, exclude=None, limit=None):
+    """Up to `limit` (default PER_DAY) people from different regions who visited pharmacies that day; first those not
+    checked this month; `exclude` (keys) are skipped entirely - used for the same day's afternoon top-up, so people
+    already picked that morning are not picked twice.
     ТП: region from the name prefix '(ург)'; МП: region from the roster (full name -> short)."""
     rnd = random.Random(seed)
+    limit = limit if limit is not None else PER_DAY
+    exclude = exclude or set()
     v = visits[visits['day'].dt.date == day].copy()
     v['who'] = v['Фарм. пред'].str.replace(r'\s*\([^()]*\)\s*$', '', regex=True).str.strip()
     if grp == 'tp':
@@ -197,7 +203,7 @@ def pick(day: dt.date, visits: pd.DataFrame, checked: set, last_seen: dict, seed
     if _rg:                                   # manual run for one region only
         v = v[v['reg'].str.lower().str.startswith(_rg[:5])]
     cnt = v.groupby('who').size()
-    people = [w for w in cnt.index if cnt[w] >= MIN_TP]
+    people = [w for w in cnt.index if cnt[w] >= MIN_TP and key(w) not in exclude]
     fresh = [w for w in people if key(w) not in checked]
     old = sorted([w for w in people if key(w) in checked], key=lambda w: last_seen.get(key(w), ''))
     rnd.shuffle(fresh)
@@ -205,11 +211,11 @@ def pick(day: dt.date, visits: pd.DataFrame, checked: set, last_seen: dict, seed
     for pool in (fresh, old):                 # different regions first, then fill up
         for w in pool:
             r = v[v.who == w]['reg'].iloc[0]
-            if len(chosen) < PER_DAY and w not in chosen and r not in regs:
+            if len(chosen) < limit and w not in chosen and r not in regs:
                 chosen.append(w); regs.append(r)
     for pool in (fresh, old):
         for w in pool:
-            if len(chosen) < PER_DAY and w not in chosen:
+            if len(chosen) < limit and w not in chosen:
                 chosen.append(w)
     rows = []
     for w in sorted(chosen, key=lambda x: (v[v.who == x]['reg'].iloc[0], x)):
@@ -305,6 +311,34 @@ def write_block(ws, day: dt.date, rows):
             c.hyperlink = c.value
 
 
+def append_to_block(ws, day: dt.date, rows):
+    """Add more rows to a day block that already exists (same day's afternoon top-up) - inserted right after the
+    header, before that block's own data rows, instead of starting a new block."""
+    dd = f"{day:%d.%m}"
+    heads = [r for r in range(1, ws.max_row + 1) if ws.cell(r, 2).value == 'Менеджер']
+    h = next((r for r in heads if str(ws.cell(r, 1).value).strip() == dd), None)
+    if h is None:
+        return write_block(ws, day, rows)       # block vanished somehow - fall back to a fresh one
+    dat_row = h + 1 if h + 1 <= ws.max_row and ws.cell(h + 1, 2).value not in (None, 'Менеджер') else 2
+    dat = [copy.copy(ws.cell(dat_row, j)._style) for j in range(1, 9)]
+    dh = ws.row_dimensions[dat_row].height
+    ws.insert_rows(h + 1, len(rows))
+    for i, r in enumerate(rows, h + 1):
+        dur = None
+        if r['dur']:
+            sec = int(round(r['dur']))
+            dur = dt.time(min(sec // 60, 23), sec % 60)
+        link = f"{BASE}/lists/visits/{r['id']}/result"
+        vals = [None, r['who'], r['reg'], dd, f'"{r["obj"]}"', dur, r['comment'], link]
+        for j, v in enumerate(vals, 1):
+            c = ws.cell(i, j, v); c._style = copy.copy(dat[j - 1])
+        ws.row_dimensions[i].height = dh
+    ws._hyperlinks = []
+    for row in ws.iter_rows(min_col=8, max_col=8):
+        c = row[0]
+        if isinstance(c.value, str) and c.value.startswith('http'):
+            c.hyperlink = c.value
+
 
 BACKLOG_DAYS = 2
 
@@ -359,7 +393,10 @@ def backlog(grp='tp', send=True):
 
 
 def run(days, send=True, grp='tp'):
-    """Add blocks for the given days (oldest first, so the newest ends on top) and send the file. grp: 'tp' or 'mp'."""
+    """Add blocks for the given days (oldest first, so the newest ends on top) and send the file. grp: 'tp' or 'mp'.
+    For TODAY specifically, a day that already has a block is topped up with more people instead of being skipped:
+    the target grows from PER_DAY to PER_DAY+TOPUP after TOPUP_HOUR, so a morning run (fresh Gemini quota) and an
+    afternoon run both contribute to the SAME day's block, same-day. Past days keep the old one-shot behaviour."""
     import vcache, roster as R
     from sales import login, switch_project
     wb = load_file(grp)
@@ -370,26 +407,42 @@ def run(days, send=True, grp='tp'):
     if _o.environ.get('AZ_REDO'):
         print(f"::notice::az redo: removed old blocks {[f'{d:%d.%m}' for d in days if drop_day(ws, f'{d:%d.%m}')]}")
     refilled = refill(ws, 1 if grp == 'tp' else 4)
-    have = {b[0] for b in blocks(ws)} if not getattr(wb, '_az_tmpl', 0) else set()
-    days = [d for d in sorted(days) if f"{d:%d.%m}" not in have]
-    if not days and not refilled:
+    today_ = dt.datetime.now(TZ).date()
+    have_counts = {b[0]: len(b[1]) for b in blocks(ws)} if not getattr(wb, '_az_tmpl', 0) else {}
+
+    def target_for(d):
+        if d != today_:
+            return PER_DAY
+        return PER_DAY + TOPUP if dt.datetime.now(TZ).hour >= TOPUP_HOUR else PER_DAY
+
+    plan = []                                  # [(day, need, is_new_block)]
+    for d in sorted(days):
+        dd = f"{d:%d.%m}"
+        if dd not in have_counts:
+            plan.append((d, target_for(d), True))
+        elif d == today_:
+            need = target_for(d) - have_counts[dd]
+            if need > 0:
+                plan.append((d, need, False))
+    if not plan and not refilled:
         print(f"::notice::az {grp}: nothing new"); return
     regions = {}
-    if days:
-        d1_ = min(days).replace(day=1)
+    if plan:
+        all_days = [d for d, _, _ in plan]
+        d1_ = min(all_days).replace(day=1)
         try:
             parts = R.load(); regions = dict(zip(parts['mp']['key'], parts['mp']['region']))
-            raw_tp, raw_mp = R.regroup(vcache.get('tp', d1_, max(days)), vcache.get('mp', d1_, max(days)), parts['tp'], parts['mp'])
+            raw_tp, raw_mp = R.regroup(vcache.get('tp', d1_, max(all_days)), vcache.get('mp', d1_, max(all_days)), parts['tp'], parts['mp'])
         except Exception as e:
             print(f"::warning::az roster not available ({str(e)[:80]}) - plain projects")
-            raw_tp, raw_mp = vcache.get('tp', d1_, max(days)), vcache.get('mp', d1_, max(days))
+            raw_tp, raw_mp = vcache.get('tp', d1_, max(all_days)), vcache.get('mp', d1_, max(all_days))
         v = raw_tp if grp == 'tp' else raw_mp
         v = v[v['Тип визита'].fillna('').str.contains('аптек|контрагент', case=False)]
         v = v.assign(day=pd.to_datetime(v['Дата'], format='%d.%m.%Y'))
         s = login()
-    added = []
-    for d in days:
-        checked, last_seen = set(), {}
+    added, topped = [], []
+    for d, need, is_new in plan:
+        checked, last_seen, exclude = set(), {}, set()
         for b in blocks(ws):
             try:
                 bd = dt.date(d.year, int(b[0][3:5]), int(b[0][:2]))
@@ -399,16 +452,24 @@ def run(days, send=True, grp='tp'):
                 last_seen[key(m)] = max(last_seen.get(key(m), ''), bd.isoformat())
                 if bd.month == d.month and bd.year == d.year:
                     checked.add(key(m))
-        rows = pick(d, v, checked, last_seen, seed=d.toordinal(), grp=grp, regions=regions)
+                if bd == d:
+                    exclude.add(key(m))
+        rows = pick(d, v, checked, last_seen, seed=d.toordinal() if is_new else d.toordinal() + 1000,
+                    grp=grp, regions=regions, exclude=exclude, limit=need)
         if not rows:
-            print(f"::notice::az {grp} {d}: no {LABEL[grp]} visits"); continue
+            print(f"::notice::az {grp} {d}: no new {LABEL[grp]} visits"); continue
         listen(s, rows)
-        tmpl = getattr(wb, '_az_tmpl', 0)
-        write_block(ws, d, rows)
-        if tmpl:                                       # new МП file: drop the copied style-template block (it is now the last one)
-            ws.delete_rows(ws.max_row - tmpl + 1, tmpl); wb._az_tmpl = 0; _relink(ws)
-        added.append((d, rows))
-        print(f"::notice::az {grp} {d}: {len({r['who'] for r in rows})} {LABEL[grp]}, {len(rows)} rows")
+        if is_new:
+            tmpl = getattr(wb, '_az_tmpl', 0)
+            write_block(ws, d, rows)
+            if tmpl:                                       # new МП file: drop the copied style-template block (it is now the last one)
+                ws.delete_rows(ws.max_row - tmpl + 1, tmpl); wb._az_tmpl = 0; _relink(ws)
+            added.append((d, rows))
+        else:
+            append_to_block(ws, d, rows)
+            topped.append((d, rows))
+        kind = 'янги' if is_new else 'қўшимча (туш. кейин)'
+        print(f"::notice::az {grp} {d} [{kind}]: {len({r['who'] for r in rows})} {LABEL[grp]}, {len(rows)} rows")
     if added and grp == 'tp':
         target = max(d for d, _ in added).month
         if any(int(b[0][3:5]) != target for b in blocks(ws) if b[0][3:5].isdigit()):
@@ -417,13 +478,15 @@ def run(days, send=True, grp='tp'):
             store.save_bytes(f"az_file_m{prev[0][3:5]}", old.getvalue())
             print(f"::notice::az: month {target} starts a new file, removed {prune(ws, target)} old blocks")
     save_file(wb, grp)
-    if send and (added or refilled):
+    if send and (added or topped or refilled):
         from telegram import send_text, send_file
-        last = max([d for d, _ in added] or [dt.datetime.now(TZ).date()])
+        last = max([d for d, _ in added] + [d for d, _ in topped] or [dt.datetime.now(TZ).date()])
         tag = '' if grp == 'tp' else ' МП'
         path = f"/tmp/Аудиозаписи{tag} ({MON[last.month]}-{last:%y}).xlsx"
         wb.save(path)
         lines = [f"🎧 <b>Аудиозаписи{tag}</b>" + (" — қўшилди: " + ", ".join(f"{d:%d.%m}" for d, _ in added) if added else "")]
+        if topped:
+            lines.append("• туш.кейин қўшимча равишда: " + ", ".join(f"{d:%d.%m} (+{len({r['who'] for r in rows})} {LABEL[grp]})" for d, rows in topped))
         if refilled:
             lines.append(f"• олдин ИИ лимити туфайли текширилмай қолган {refilled} та ёзув тингланди")
         for d, rows in added:
@@ -652,8 +715,9 @@ if __name__ == "__main__":
         store.save_bytes('az_file', open(src, 'rb').read())
         print("::notice::az base saved")
     else:
-        d1 = dt.date.fromisoformat(os.environ["AZ_FROM"]) if os.environ.get("AZ_FROM") else today - dt.timedelta(days=1)
-        d2 = dt.date.fromisoformat(os.environ["AZ_TO"]) if os.environ.get("AZ_TO") else today - dt.timedelta(days=1)
+        # default (no AZ_FROM): BUGUNGI kun - shu kuningda tekshiriladi, kechaga qolmasin (19.11.2026, Bobur so'rovi)
+        d1 = dt.date.fromisoformat(os.environ["AZ_FROM"]) if os.environ.get("AZ_FROM") else today
+        d2 = dt.date.fromisoformat(os.environ["AZ_TO"]) if os.environ.get("AZ_TO") else today
         _days = [d1 + dt.timedelta(days=i) for i in range((d2 - d1).days + 1)]
         for _g in ((os.environ.get('AZ_GROUP') or 'tp,mp').split(',')):
             try:

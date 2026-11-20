@@ -26,9 +26,11 @@ function jobs(d) {
   if (m === 5 && h !== 12 && h !== 3 && h !== 4 && h !== 8 && h !== 9 && h !== 10 && h !== 11) out.push(["snapshot.yml", {}]);
   if (h === 12 && m === 5) out.push(["report.yml", { mode: "daily", auto: "1" }]);       // 17:05 -> fayl 17:45–17:55
   if (h === 3 && m === 30) out.push(["report.yml", { mode: "update", auto: "1" }]);      // 08:30
-  if (h === 8 && m === 10) out.push(["az.yml", {}]);                                      // 13:10 Аудиозаписи (kechagi kun, ТП+МП): Gemini kunlik limiti 13:00 da yangilanadi
-  // Google tomonidan vaqtincha uzilish (503/timeout) bo'lganida ham ish kuni oxirigacha (17:05dagi report'dan oldin)
-  // qayta urinib ulgurishi uchun: faqat "Текширилмади" qolgan qatorlarni qayta tinglaydi (refill/backlog), spam yubormaydi.
+  // Аудиозаписи (19.11.2026, Bobur so'rovi: BUGUNGI kun, kechaga qolmasin): 13:10 - ertalabki 6 ТП/МП tanlanadi
+  // (Gemini kunlik limiti 13:00 da yangilanadi); 15:10 - agar Google vaqtincha uzilgan bo'lsa qayta urinish
+  // (faqat "Текширилмади" qolganlarni qayta tinglaydi, yangi kun ochmaydi); 16:10 - tushdan keyin yana 3 ТП/МП
+  // qo'shiladi (shu kunning o'zi, 17:05dagi report'dan oldin tugaydi).
+  if (h === 8 && m === 10) out.push(["az.yml", {}]);                                      // 13:10
   if (wd !== 0 && h === 10 && m === 10) out.push(["az.yml", {}]);                         // 15:10 (Душ-Шан)
   if (wd !== 0 && h === 11 && m === 10) out.push(["az.yml", {}]);                         // 16:10 (Душ-Шан)
   if (wd === 0 && h === 18 && m === 0) out.push(["report.yml", { mode: "weekly", auto: "1" }]);  // yakshanba 23:00

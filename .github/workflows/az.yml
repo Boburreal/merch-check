@@ -1,9 +1,10 @@
 name: Аудиозаписи (qo'lda)
 on:
   schedule:
+    # Hammasi BUGUNGI kunni tekshiradi (19.11.2026 dan): 13:10 ertalabki 6 ТП/МП, 16:10 tushdan keyin +3 ta
     - cron: '10 8 * * *'      # 13:10 Toshkent (Worker ham shu vaqtda ishga tushiradi; takror bo'lsa 'nothing new')
-    - cron: '10 10 * * 1-6'   # 15:10 Toshkent, Душ-Шан: Google vaqtincha uzilishida qayta urinish (refill/backlog)
-    - cron: '10 11 * * 1-6'   # 16:10 Toshkent, Душ-Шан: shu kuni yana bir qayta urinish, 17:05dagi report'dan oldin
+    - cron: '10 10 * * 1-6'   # 15:10 Toshkent, Душ-Шан: Google vaqtincha uzilishida qayta urinish (refill, yangi kun ochmaydi)
+    - cron: '10 11 * * 1-6'   # 16:10 Toshkent, Душ-Шан: tushdan keyingi qo'shimcha (+3 ТП/МП), 17:05dagi report'dan oldin
   workflow_dispatch:
     inputs:
       from: {description: "YYYY-MM-DD", default: ""}
