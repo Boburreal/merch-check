@@ -59,3 +59,8 @@ def send_file(path: str, caption: str = ""):
                           data={"chat_id": chat_id(), "caption": caption[:1000]}, files={"document": f})
     if not r.ok:
         raise RuntimeError(f"sendDocument {r.status_code}: {r.text[:150]}")
+    try:                                   # «Asklepiy Визитлар» саҳифаси учун нусха (Cloudflare D1, vizit-inbox)
+        from inbox import push_file
+        push_file(path)
+    except Exception as e:
+        print(f"inbox: {e}")
