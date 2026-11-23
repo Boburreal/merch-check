@@ -50,6 +50,11 @@ def main():
         wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True)
         n = sum(max(ws.max_row - 1, 0) for ws in wb.worksheets)
         print(f"tests: {len(data)} bytes, ~{n} rows, sheets={len(wb.worksheets)}")
+        rows = list(wb.worksheets[0].iter_rows(values_only=True))
+        print("tests header:", rows[0] if rows else None)
+        if len(rows) > 1:   # фақат тузилиш: ой қийматлари ва сана/натижа шакли (исм йўқ)
+            print("tests month values:", sorted({str(r[2]) for r in rows[1:] if len(r) > 2})[:12])
+            print("tests shape:", [type(x).__name__ for x in rows[1]], re.sub(r"\d", "9", str(rows[1][3])), re.sub(r"\d", "9", str(rows[1][5])))
     except Exception as e:
         print(f"tests: {len(data)} bytes (not xlsx? {e})")
     from inbox import push_file
