@@ -57,6 +57,15 @@ jobs:
           ONLY_MP: ${{ inputs.only_mp }}
           NO_REGROUP: ${{ inputs.no_regroup }}
           AUTO: ${{ github.event_name == 'schedule' && '1' || inputs.auto }}
+      - name: Тест натижалари → саҳифа
+        if: always() && steps.m.outputs.mode == 'daily'
+        continue-on-error: true
+        run: pip install openpyxl -q; python tests_fetch.py
+        env:
+          SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
+          SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_D1_TOKEN: ${{ secrets.CF_D1_TOKEN }}
       - name: Save merch results (encrypted)
         if: always()
         run: |
