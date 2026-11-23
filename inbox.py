@@ -6,7 +6,7 @@ telegram.send_file() ҳар бир файлни юборгандан кейин 
 Secrets:  CF_ACCOUNT_ID, CF_D1_TOKEN (D1 Edit ҳуқуқли API token)
 Хато бўлса ҳам бот ишини тўхтатмайди (exit 0) — фақат лог ёзади.
 """
-import base64, datetime, json, os, sys, urllib.request, uuid
+import base64, datetime, json, os, sys, urllib.error, urllib.request, uuid
 
 DB = "5ceb1306-b25c-4012-8a00-a4962f4ebd41"
 CHUNK = 60000
@@ -14,15 +14,18 @@ KEEP_DAYS = 30
 
 
 def q(sql, params):
-    acc, tok = os.environ["CF_ACCOUNT_ID"], os.environ["CF_D1_TOKEN"]
+    acc, tok = os.environ["CF_ACCOUNT_ID"].strip(), os.environ["CF_D1_TOKEN"].strip()
     req = urllib.request.Request(
         f"https://api.cloudflare.com/client/v4/accounts/{acc}/d1/database/{DB}/query",
         data=json.dumps({"sql": sql, "params": params}).encode(),
         headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=60) as r:
-        out = json.load(r)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            out = json.load(r)
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP {e.code}: {e.read()[:300].decode('utf-8', 'replace')}")
     if not out.get("success"):
         raise RuntimeError(out.get("errors"))
     return out
