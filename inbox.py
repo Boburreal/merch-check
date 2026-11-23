@@ -14,7 +14,7 @@ KEEP_DAYS = 30
 
 
 def q(sql, params):
-    acc, tok = os.environ["CF_ACCOUNT_ID"].strip(), os.environ["CF_D1_TOKEN"].strip()
+    acc, tok = os.environ["CF_ACCOUNT_ID"].strip(), os.environ["CF_D1_TOKEN"].strip().strip("\"' ")
     req = urllib.request.Request(
         f"https://api.cloudflare.com/client/v4/accounts/{acc}/d1/database/{DB}/query",
         data=json.dumps({"sql": sql, "params": params}).encode(),

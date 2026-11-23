@@ -17,8 +17,8 @@ jobs:
       - if: always()
         run: |
           python -c "import os;t=os.environ['CF_D1_TOKEN'];a=os.environ['CF_ACCOUNT_ID'];import re;print('odd chars',sorted(set(c for c in t if not re.match(r'[A-Za-z0-9_\-]',c))),'nonascii',any(ord(c)>127 for c in t),'dots',t.count('.'));print('token len',len(t),'spaces',t!=t.strip(),'acc len',len(a),'acc ok',a.strip()=='8ff7fd523f64c3e20ad97b15188b36ad')"
-          curl -s -H "Authorization: Bearer $CF_D1_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify | head -c 300; echo
-          curl -s -H "Authorization: Bearer $CF_D1_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/tokens/verify" | head -c 300; echo
+          curl -s -H "Authorization: Bearer ${CF_D1_TOKEN//\"/}" https://api.cloudflare.com/client/v4/user/tokens/verify | head -c 300; echo
+          curl -s -H "Authorization: Bearer ${CF_D1_TOKEN//\"/}" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/tokens/verify" | head -c 300; echo
         env:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_D1_TOKEN: ${{ secrets.CF_D1_TOKEN }}
