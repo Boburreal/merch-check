@@ -1,0 +1,16 @@
+name: Vizit inbox check (qo'lda)
+on: workflow_dispatch
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          python - <<'P'
+          import inbox
+          r = inbox.q("SELECT COUNT(*) AS n FROM files", [])
+          print("inbox OK, files rows:", r["result"][0]["results"][0]["n"])
+          P
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_D1_TOKEN: ${{ secrets.CF_D1_TOKEN }}
