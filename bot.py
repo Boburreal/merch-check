@@ -60,10 +60,13 @@ def arxiv(text):
     if not (1 <= mm <= 12):
         say("Ой рақами 1-12 оралиғида бўлиши керак, масалан: <code>/arxiv 10.2026</code>")
         return
-    last_day = calendar.monthrange(yyyy, mm)[1]
-    say(f"⏳ {mm:02d}.{yyyy} ойи учун ТП/МП визит ва Аудиозаписи файллари қайта тайёрланяпти — бир неча дақиқа кетиши мумкин, тайёр бўлгач ўзим юбораман.")
+    # "update" rejimi (bir kun oldinga TODAY bilan) — oyning oxirgi kuni uchun ertasi kuni (08:30dagiga o'xshab)
+    # kech kiritilgan vizitlar bilan to'liq yangilangan holatni beradi, оddiy "daily" kabi soat-кесик эмас
+    nxt_y, nxt_m = (yyyy, mm + 1) if mm < 12 else (yyyy + 1, 1)
+    say(f"⏳ {mm:02d}.{yyyy} ойи учун ТП/МП визит (кеч киритилган визитлар билан янгиланган) ва Аудиозаписи файллари "
+        f"қайта тайёрланяпти — бир неча дақиқа кетиши мумкин, тайёр бўлгач ўзим юбораман.")
     ok1, msg1 = gh_dispatch("report.yml", {
-        "mode": "daily", "today": f"{yyyy}-{mm:02d}-{last_day:02d}",
+        "mode": "update", "today": f"{nxt_y}-{nxt_m:02d}-01",
         "no_regroup": "1" if (yyyy, mm) < (2026, 11) else ""})
     ok2, msg2 = gh_dispatch("az.yml", {"mode": "resend_month", "month": f"{mm:02d}", "year": str(yyyy)})
     if not (ok1 and ok2):
