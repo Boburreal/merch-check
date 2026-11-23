@@ -9,11 +9,13 @@ on:
     inputs:
       from: {description: "YYYY-MM-DD", default: ""}
       to: {description: "YYYY-MM-DD", default: ""}
-      mode: {description: "bo'sh / split / review / relisten / recheck", default: ""}
+      mode: {description: "bo'sh / split / review / relisten / recheck / resend_month / stats / keycheck", default: ""}
       model: {description: "Gemini model (bo'sh = avtomatik)", default: ""}
       group: {description: "tp / mp / tp,mp (bo'sh = ikkalasi)", default: ""}
       redo: {description: "1 = shu kunlar blokini o'chirib qaytadan tuzish", default: ""}
       region: {description: "faqat shu hudud (masalan Андижан), bo'sh = hammasi", default: ""}
+      month: {description: "resend_month uchun: MM (masalan 10)", default: ""}
+      year: {description: "resend_month uchun: YYYY, bo'sh = joriy yil", default: ""}
 permissions:
   contents: write
 jobs:
@@ -34,6 +36,8 @@ jobs:
           AZ_GROUP: ${{ inputs.group }}
           AZ_REGION: ${{ inputs.region }}
           AZ_REDO: ${{ inputs.redo }}
+          AZ_MONTH: ${{ inputs.month }}
+          AZ_YEAR: ${{ inputs.year }}
           SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
           SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

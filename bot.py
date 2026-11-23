@@ -38,6 +38,38 @@ def norm(s):
     return re.sub(r'\s+', ' ', s).strip()
 
 
+def gh_dispatch(wf, inputs):
+    """Trigger another workflow in this same repo via the job's own GITHUB_TOKEN (no extra secret needed)."""
+    tok = os.environ.get("GITHUB_TOKEN")
+    if not tok:
+        return False, "GITHUB_TOKEN йўқ (bot.yml'да permissions/actions: write қўшилганми?)"
+    r = requests.post(f"https://api.github.com/repos/Boburreal/merch-check/actions/workflows/{wf}/dispatches",
+                      headers={"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json"},
+                      json={"ref": "main", "inputs": inputs}, timeout=30)
+    return r.status_code == 204, f"{r.status_code} {r.text[:150]}"
+
+
+def arxiv(text):
+    """/arxiv 10.2026 (yoki 2026-10) — o'sha oyning yakuniy ТП/МП визит va Аудиозаписи файлларини qayta yuboradi."""
+    import calendar
+    m = re.search(r'(\d{1,2})[.\-/](\d{4})\b', text) or re.search(r'(\d{4})-(\d{1,2})\b', text)
+    if not m:
+        say("Қайси ойни қайта чиқарай? Масалан: <code>/arxiv 10.2026</code> (Октябрь 2026)")
+        return
+    mm, yyyy = (int(m.group(1)), int(m.group(2))) if len(m.group(2)) == 4 else (int(m.group(2)), int(m.group(1)))
+    if not (1 <= mm <= 12):
+        say("Ой рақами 1-12 оралиғида бўлиши керак, масалан: <code>/arxiv 10.2026</code>")
+        return
+    last_day = calendar.monthrange(yyyy, mm)[1]
+    say(f"⏳ {mm:02d}.{yyyy} ойи учун ТП/МП визит ва Аудиозаписи файллари қайта тайёрланяпти — бир неча дақиқа кетиши мумкин, тайёр бўлгач ўзим юбораман.")
+    ok1, msg1 = gh_dispatch("report.yml", {
+        "mode": "daily", "today": f"{yyyy}-{mm:02d}-{last_day:02d}",
+        "no_regroup": "1" if (yyyy, mm) < (2026, 11) else ""})
+    ok2, msg2 = gh_dispatch("az.yml", {"mode": "resend_month", "month": f"{mm:02d}", "year": str(yyyy)})
+    if not (ok1 and ok2):
+        say(f"❗️ Ишга туширишда хатолик: {esc(msg1 if not ok1 else msg2)}")
+
+
 def ask_period(tg_):
     import check
     t = (tg_[0], int(tg_[1:]))
@@ -70,7 +102,8 @@ def main():
     if text.startswith("/start") or text.lower() in ("/help", "ёрдам", "yordam"):
         # the bot menu is for visit analytics only (removes commands another program left on this bot)
         tg("setMyCommands", commands=[{"command": "start", "description": "Ёрдам"},
-                                      {"command": "tekshir", "description": "Ходим ёки ҳудуд жамоасини текшириш"}])
+                                      {"command": "tekshir", "description": "Ходим ёки ҳудуд жамоасини текшириш"},
+                                      {"command": "arxiv", "description": "Ўтган ойнинг якуний файлларини қайта юбориш"}])
         say("📊 <b>Визит аналитикаси боти</b>\n\n"
             "<b>Ўзи юборади:</b>\n"
             "• ҳар куни ~17:45 — ТП «Факт визит и мерч», МП визит файллари (ой бошидан) ва «Аудиозаписи» файли\n"
@@ -79,9 +112,13 @@ def main():
             "• ойнинг 1-санаси 09:00 — ойлик таҳлил\n"
             "Файлларда: шубҳали визитлар, мерч (Витрина/Касса), «ТП × аптека», «Аптека × ТП», «Бир нуқтада 7+ аптека».\n\n"
             "<b>Ходим / жамоани текшириш:</b> <code>/tekshir Фамилия</code> ёки <code>/tekshir Вилоят</code> — "
-            "давр (ҳафта/ой) танлайсиз, шубҳали визитлар, мерч ва аптека қамрови бўйича файл келади.")
+            "давр (ҳафта/ой) танлайсиз, шубҳали визитлар, мерч ва аптека қамрови бўйича файл келади.\n\n"
+            "<b>Ўтган ойнинг якуний файлларини қайта олиш:</b> <code>/arxiv 10.2026</code> — ўша ойнинг ТП «Факт визит и мерч», "
+            "МП визит ва Аудиозаписи (ТП+МП) файлларини қайта юборади.")
         return
     low = text.lower()
+    if low.startswith(("/arxiv", "/архив", "arxiv", "архив")):
+        return arxiv(text)
     if low.startswith(("/tekshir", "/текшир", "tekshir", "текшир")):
         import check
         q = text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else ""
@@ -97,7 +134,7 @@ def main():
         else:
             say("Қайси бири?", [[{"text": check.label(t)[:60], "callback_data": f"cks:{t[0]}{t[1]}"}] for t in ts[:10]])
         return
-    say("Бот фақат ҳисобот юборади ва <code>/tekshir Фамилия</code> буйруғини тушунади. Ёрдам: /start")
+    say("Бот фақат ҳисобот юборади, <code>/tekshir Фамилия</code> ва <code>/arxiv ОЙ.ЙИЛ</code> буйруқларини тушунади. Ёрдам: /start")
 
 
 if __name__ == "__main__":

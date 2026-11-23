@@ -694,6 +694,40 @@ if __name__ == "__main__":
                     print(f"::notice::key{ki + 1} {m}: {x.status_code} {why}")
                 except Exception as ex:
                     print(f"::notice::key{ki + 1} {m}: err {str(ex)[:60]}")
+    elif mode == "resend_month":              # saqlangan Аудиозаписи faylini (ТП/МП) bitta oy uchun qayta yuboradi, hech narsa o'zgartirmaydi
+        mm = os.environ["AZ_MONTH"].zfill(2)
+        yy = (os.environ.get("AZ_YEAR") or str(today.year))[-2:]
+        cur_mm = f"{today.month:02d}"
+        from telegram import send_file, send_text
+        any_sent = False
+        for g in ((os.environ.get('AZ_GROUP') or 'tp,mp').split(',')):
+            g = g.strip()
+            wb = None
+            if mm != cur_mm and g == 'tp':                  # ТП: o'tgan oylar alohida arxivlanadi (oy almashganda)
+                raw = store.load_bytes(f"az_file_m{mm}")
+                if raw:
+                    wb = load_workbook(io.BytesIO(raw))
+            if wb is None:                                   # joriy oy, yoki МП (arxivlanmaydi, hammasi bitta faylda)
+                wb = load_file(g)
+            if wb is None:
+                continue
+            ws = wb.active
+            other_days = {str(ws.cell(h, 1).value).strip() for h in
+                          [r for r in range(1, ws.max_row + 1) if ws.cell(r, 2).value == 'Менеджер']
+                          if str(ws.cell(h, 1).value).strip()[3:5] != mm}
+            for dd_ in other_days:
+                drop_day(ws, dd_)
+            left = [b for b in blocks(ws) if b[0][3:5] == mm]
+            if not left:
+                continue                                      # bu oy uchun saqlangan ma'lumot topilmadi
+            tag = '' if g == 'tp' else ' МП'
+            path = f"/tmp/Аудиозаписи{tag} ({MON[int(mm)]}-{yy}).xlsx"
+            wb.save(path)
+            send_file(path, f"Аудиозаписи{tag} — {MON[int(mm)]} 20{yy} (қайта юборилди)")
+            any_sent = True
+        if not any_sent:
+            send_text(f"Аудиозаписи: {mm}.20{yy} учун сақланган файл топилмади.")
+        print(f"::notice::az resend_month {mm}.20{yy}: sent={any_sent}")
     elif mode == "stats":                    # counts only: how many rows per day are still unverified
         for g in ('tp', 'mp'):
             wb = load_file(g)

@@ -5,6 +5,7 @@ on:
       update: {description: "Cloudflare Worker yuboradigan qisqa Telegram update (JSON)", required: true}
 permissions:
   contents: write
+  actions: write   # /arxiv buyrug'i: report.yml va az.yml'ni ishga tushirish uchun (GITHUB_TOKEN, qo'shimcha secret shart emas)
 jobs:
   bot:
     runs-on: ubuntu-latest
@@ -23,6 +24,7 @@ jobs:
       - run: python bot.py
         env:
           UPDATE: ${{ inputs.update }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SALES_LOGIN: ${{ secrets.SALES_LOGIN }}
           SALES_PASSWORD: ${{ secrets.SALES_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
