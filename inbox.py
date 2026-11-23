@@ -57,10 +57,10 @@ def kind_of(path):
     return None
 
 
-def push_file(path):
+def push_file(path, kind=None):
     """Хато бўлса ҳам ҳеч қачон exception чиқармайди — бот иши бузилмайди."""
     try:
-        kind = kind_of(path)
+        kind = kind or kind_of(path)
         if not kind:
             return
         if not os.environ.get("CF_D1_TOKEN") or not os.environ.get("CF_ACCOUNT_ID"):
