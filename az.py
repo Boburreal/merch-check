@@ -709,6 +709,9 @@ if __name__ == "__main__":
             n2 = len(v)
             v['who'] = v['Фарм. пред'].str.replace(r'\s*\([^()]*\)\s*$', '', regex=True).str.strip()
             if g == 'tp':
+                if n2 and v['Фарм. пред'].str.contains('Торг', na=False).sum() == 0:
+                    print(f"::notice::pickdebug {g} {d}: RAW Фарм.пред values (day, pre-torg-filter): "
+                          f"{list(v['Фарм. пред'].unique())[:15]}")
                 v = v[v['Фарм. пред'].str.contains('Торг', na=False)]
                 v['reg'] = v['who'].map(short_region)
             else:
