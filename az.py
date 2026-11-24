@@ -698,8 +698,13 @@ if __name__ == "__main__":
         import vcache, roster as R
         from export import fetch
         d = dt.date.fromisoformat(os.environ["AZ_FROM"])
-        raw_direct = fetch(1, d, d)   # vcache/regroup'ni aylanib o'tib, to'g'ridan-to'g'ri Sales'dan shu kun uchun (loyiha 1)
-        print(f"::notice::pickdebug tp {d}: DIRECT Sales fetch (project 1, no cache/regroup) rows={len(raw_direct)}")
+        raw_direct = fetch(1, d - dt.timedelta(days=5), d)   # vcache/regroup'ni aylanib o'tib, to'g'ridan-to'g'ri Sales'dan (loyiha 1)
+        if len(raw_direct):
+            cc = raw_direct.assign(dd=pd.to_datetime(raw_direct['Дата'], format='%d.%m.%Y', errors='coerce')).groupby('dd').size()
+            print(f"::notice::pickdebug tp DIRECT Sales fetch (project 1, no cache) {d-dt.timedelta(days=5)}..{d}: "
+                  f"total={len(raw_direct)} by-day={dict((k.strftime('%d.%m'), v) for k, v in cc.items())}")
+        else:
+            print(f"::notice::pickdebug tp DIRECT Sales fetch (project 1, no cache) {d-dt.timedelta(days=5)}..{d}: total=0")
         parts = R.load(); regions = dict(zip(parts['mp']['key'], parts['mp']['region']))
         raw_tp, raw_mp = R.regroup(vcache.get('tp', d.replace(day=1), d), vcache.get('mp', d.replace(day=1), d), parts['tp'], parts['mp'])
         for g in ('tp', 'mp'):
