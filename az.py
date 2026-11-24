@@ -696,7 +696,10 @@ if __name__ == "__main__":
                     print(f"::notice::key{ki + 1} {m}: err {str(ex)[:60]}")
     elif mode == "pickdebug":                # bitta kun uchun pick() pullarini bosqichma-bosqich hisoblaydi (hech narsa yozmaydi/yubormaydi)
         import vcache, roster as R
+        from export import fetch
         d = dt.date.fromisoformat(os.environ["AZ_FROM"])
+        raw_direct = fetch(1, d, d)   # vcache/regroup'ni aylanib o'tib, to'g'ridan-to'g'ri Sales'dan shu kun uchun (loyiha 1)
+        print(f"::notice::pickdebug tp {d}: DIRECT Sales fetch (project 1, no cache/regroup) rows={len(raw_direct)}")
         parts = R.load(); regions = dict(zip(parts['mp']['key'], parts['mp']['region']))
         raw_tp, raw_mp = R.regroup(vcache.get('tp', d.replace(day=1), d), vcache.get('mp', d.replace(day=1), d), parts['tp'], parts['mp'])
         for g in ('tp', 'mp'):
