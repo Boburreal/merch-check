@@ -694,6 +694,31 @@ if __name__ == "__main__":
                     print(f"::notice::key{ki + 1} {m}: {x.status_code} {why}")
                 except Exception as ex:
                     print(f"::notice::key{ki + 1} {m}: err {str(ex)[:60]}")
+    elif mode == "pickdebug":                # bitta kun uchun pick() pullarini bosqichma-bosqich hisoblaydi (hech narsa yozmaydi/yubormaydi)
+        import vcache, roster as R
+        d = dt.date.fromisoformat(os.environ["AZ_FROM"])
+        parts = R.load(); regions = dict(zip(parts['mp']['key'], parts['mp']['region']))
+        raw_tp, raw_mp = R.regroup(vcache.get('tp', d.replace(day=1), d), vcache.get('mp', d.replace(day=1), d), parts['tp'], parts['mp'])
+        for g in ('tp', 'mp'):
+            v = raw_tp if g == 'tp' else raw_mp
+            n0 = len(v)
+            v = v[v['Тип визита'].fillna('').str.contains('аптек|контрагент', case=False)]
+            n1 = len(v)
+            v = v.assign(day=pd.to_datetime(v['Дата'], format='%d.%m.%Y'))
+            v = v[v['day'].dt.date == d].copy()
+            n2 = len(v)
+            v['who'] = v['Фарм. пред'].str.replace(r'\s*\([^()]*\)\s*$', '', regex=True).str.strip()
+            if g == 'tp':
+                v = v[v['Фарм. пред'].str.contains('Торг', na=False)]
+                v['reg'] = v['who'].map(short_region)
+            else:
+                v['reg'] = v['who'].map(lambda w: FULL2SHORT.get((regions or {}).get(key(w))))
+            n3 = len(v)
+            v = v[v['reg'].notna()]
+            n4 = len(v)
+            cnt = v.groupby('who').size()
+            print(f"::notice::pickdebug {g} {d}: month-regrouped={n0} aptek/contr={n1} day={n2} torg/reg-ok={n3} reg-notna={n4} "
+                  f"people={len(cnt)} names={list(cnt.index)[:15]}")
     elif mode == "resend_month":              # saqlangan Аудиозаписи faylini (ТП/МП) bitta oy uchun qayta yuboradi, hech narsa o'zgartirmaydi
         mm = os.environ["AZ_MONTH"].zfill(2)
         yy = (os.environ.get("AZ_YEAR") or str(today.year))[-2:]
