@@ -47,7 +47,7 @@ def regroup(raw_tp: pd.DataFrame, raw_mp: pd.DataFrame, tp_people: pd.DataFrame,
     mk, tk = set(mp_people['key']), set(tp_people['key'])
     kt = raw_tp['Фарм. пред'].map(key) if len(raw_tp) else pd.Series([], dtype=str)
     km = raw_mp['Фарм. пред'].map(key) if len(raw_mp) else pd.Series([], dtype=str)
-    to_mp = kt.isin(mk) & ~kt.isin(tk)
+    to_mp = kt.isin(mk) & ~kt.isin(tk) & False   # Bobur 27.11.2026: ТП лойиҳасидаги (мерч) визитлар МП ҳисоботига ўтмайди — мерч фақат ТП да
     to_tp = km.isin(tk) & ~km.isin(mk)
     new_tp = pd.concat([raw_tp[~to_mp], raw_mp[to_tp]], ignore_index=True)
     new_mp = pd.concat([raw_mp[~to_tp], raw_tp[to_mp]], ignore_index=True)
