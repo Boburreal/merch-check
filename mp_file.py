@@ -32,19 +32,18 @@ def build(path, title, mp: pd.DataFrame, people: pd.DataFrame):
     for typ in ('К доктору', 'К контрагенту'):
         ws = wb.active if first else wb.create_sheet(typ)
         ws.title = typ; first = False
-        cols = ['Дата', 'Тип', 'Объект', 'Фарм представитель', 'Регион', 'Ёпилган вақт', 'Изоҳ', 'Фото 1', 'Фото 2']
+        # Bobur 27.11.2026: МП файлида Фото 1 / Фото 2 (мерч фото) ҳаволалари керак эмас — улар фақат ТП файлида
+        cols = ['Дата', 'Тип', 'Объект', 'Фарм представитель', 'Регион', 'Ёпилган вақт', 'Изоҳ']
         _hdr(ws, 1, cols)
         x = mp[mp['Тип'] == typ].sort_values(['day', 'ФП', 'dt'])
         for i, r in enumerate(x.to_dict('records'), 2):
             vals = [r['Дата'], typ, r['Контр-агент/Врач'], r['ФП'], r['Иш ҳудуди'], r['Время завершения визита'],
-                    r['Изоҳ'], r['Фото 1'], r['Фото 2']]
+                    r['Изоҳ']]
             for j, v in enumerate(vals, 1):
-                c = ws.cell(i, j, v)
-                if j in (8, 9) and isinstance(v, str) and v.startswith('http'):
-                    c.hyperlink = v; c.value = 'Очиш'; c.font = Font(color='0563C1', underline='single')
+                ws.cell(i, j, v)
             if r['Шубҳали']:
                 ws.cell(i, 7).fill = YEL
-        for j, w in enumerate([11, 14, 45, 34, 18, 16, 80, 8, 8], 1):
+        for j, w in enumerate([11, 14, 45, 34, 18, 16, 80], 1):
             ws.column_dimensions[get_column_letter(j)].width = w
         ws.freeze_panes = 'A2'; ws.auto_filter.ref = ws.dimensions
 
