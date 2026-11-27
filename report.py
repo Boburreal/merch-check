@@ -189,6 +189,15 @@ else:
     raw_tp, raw_mp = R.regroup(vcache.get('tp', f1, d2), vcache.get('mp', f1, d2), tp_people, mp_people)   # roster decides ТП / МП
 tp = prepare(raw_tp, 'ТП', loc_log)
 tp = tp[~tp['Лавозим'].str.contains('Медицин')]
+# Bobur 27.11.2026: Мерч фақат ТП да бўлади — МП ҳисоботига мерч визитлари қўйилмайди
+_vt = raw_mp['Тип визита'].fillna('').astype(str)
+_src = raw_mp['src'].astype(str) if 'src' in raw_mp else pd.Series('4', index=raw_mp.index)
+print("::notice::mp visit types: " + "; ".join(f"{k[0]}|{k[1]}={v}" for k, v in pd.crosstab(_src, _vt).stack().items() if v))
+_merch = _vt.str.contains('мерч|merch', case=False)
+print(f"::notice::mp merch visits removed: {int(_merch.sum())}")
+raw_mp = raw_mp[~_merch]
+if os.environ.get('DIAG'):
+    raise SystemExit(0)
 mp = prepare(raw_mp, 'МП', loc_log)
 tp = enrich(tp, 'ТП', tp_people, comp, 'ТП')
 mp = enrich(mp, 'МП', mp_people, comp, 'МП')
